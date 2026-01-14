@@ -7,6 +7,9 @@ build/
 *.apk
 *.so
 .externalNativeBuild
+*.class
+bin/
+*/bin/
 
 # Crashlytics configuations
 com_crashlytics_export_strings.xml

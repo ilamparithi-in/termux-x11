@@ -29,6 +29,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.preference.ListPreference;
 import androidx.preference.Preference;
+import androidx.preference.SwitchPreferenceCompat;
 
 import android.os.Handler;
 import android.os.IBinder;
@@ -291,6 +292,13 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
             setVisible("showStylusClickOverride", stylusAvailable);
             setVisible("stylusIsMouse", stylusAvailable);
             setVisible("stylusButtonContactModifierMode", stylusAvailable);
+            setVisible("lenovoPenMappingEntry", stylusAvailable);
+
+            setLenovoPenToggleSummary("lenovoPenSinglePressToggle");
+            setLenovoPenToggleSummary("lenovoPenDoublePressToggle");
+            setLenovoPenToggleSummary("lenovoPenTriplePressToggle");
+            setLenovoPenToggleSummary("lenovoPenLongPressToggle");
+            setLenovoPenToggleSummary("lenovoPenLongPressClickToggle");
 
             setNoActionOptionText(findPreference("volumeDownAction"), "android volume control");
             setNoActionOptionText(findPreference("volumeUpAction"), "android volume control");
@@ -305,6 +313,16 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
                         return p.isEnabled() ? null : getResources().getString(disabled);
                     }
                 });
+        }
+
+        private void setLenovoPenToggleSummary(CharSequence key) {
+            Preference pref = findPreference(key);
+            if (pref instanceof SwitchPreferenceCompat) {
+                ((SwitchPreferenceCompat) pref).setSummaryProvider(p -> {
+                    boolean checked = ((SwitchPreferenceCompat) p).isChecked();
+                    return getString(checked ? R.string.pref_lenovoPenToggleSummary_on : R.string.pref_lenovoPenToggleSummary_off);
+                });
+            }
         }
 
         private void setVisible(CharSequence key, boolean value) {
@@ -350,10 +368,24 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
             setEnabled("scaleTouchpad", "1".equals(prefs.touchMode.get()) && !"native".equals(prefs.displayResolutionMode.get()));
             setEnabled("showMouseHelper", "1".equals(prefs.touchMode.get()));
 
+            updateLenovoPenGestureLayout("lenovoPenSinglePressAction", "lenovoPenSinglePressToggle", "lenovoPenSinglePressDurationMs");
+            updateLenovoPenGestureLayout("lenovoPenDoublePressAction", "lenovoPenDoublePressToggle", "lenovoPenDoublePressDurationMs");
+            updateLenovoPenGestureLayout("lenovoPenTriplePressAction", "lenovoPenTriplePressToggle", "lenovoPenTriplePressDurationMs");
+            updateLenovoPenGestureLayout("lenovoPenLongPressAction", "lenovoPenLongPressToggle", "lenovoPenLongPressDurationMs");
+            updateLenovoPenGestureLayout("lenovoPenLongPressClickAction", "lenovoPenLongPressClickToggle", "lenovoPenLongPressClickDurationMs");
+
             boolean requestNotificationPermissionVisible =
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                     && ContextCompat.checkSelfPermission(requireContext(), POST_NOTIFICATIONS) == PERMISSION_DENIED;
             setVisible("requestNotificationPermission", requestNotificationPermissionVisible);
+        }
+
+        private void updateLenovoPenGestureLayout(String actionKey, String toggleKey, String durationKey) {
+            String actionValue = prefs.get().getString(actionKey, "disabled");
+            boolean mappingEnabled = actionValue != null && !"disabled".contentEquals(actionValue);
+            setEnabled(toggleKey, mappingEnabled);
+            boolean toggle = prefs.get().getBoolean(toggleKey, false);
+            setEnabled(durationKey, mappingEnabled && !toggle);
         }
 
         /** @noinspection SameParameterValue*/
@@ -429,6 +461,15 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
 
             if ("showAdditionalKbd".contentEquals(key) && (Boolean) newValue)
                 prefs.additionalKbdVisible.put(true);
+
+            if (key != null && key.startsWith("lenovoPen") && key.endsWith("DurationMs")) {
+                try {
+                    Integer.parseInt((String) newValue);
+                } catch (NumberFormatException ex) {
+                    Toast.makeText(getActivity(), "Please enter a number", Toast.LENGTH_SHORT).show();
+                    return false;
+                }
+            }
 
             if ("enableAccessibilityServiceAutomatically".contentEquals(key)) {
                 if (!((Boolean) newValue))

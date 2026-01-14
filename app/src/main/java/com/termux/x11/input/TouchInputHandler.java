@@ -92,6 +92,9 @@ public class TouchInputHandler {
     private final InputEventSender mInjector;
     private final MainActivity mActivity;
     private final DisplayMetrics mMetrics = new DisplayMetrics();
+    private final StylusState lastStylusState = new StylusState();
+    private final StylusState lastRawStylusState = new StylusState();
+    private int stylusToggleMask = 0;
 
     private final BiConsumer<Integer, Boolean> noAction = (key, down) -> {};
     private BiConsumer<Integer, Boolean> swipeUpAction = noAction, swipeDownAction = noAction,
@@ -174,6 +177,11 @@ public class TouchInputHandler {
         mRenderData = renderData != null ? renderData :new RenderData();
         mInjector = injector;
         mActivity = activity;
+        PointF cursor = mRenderData.getCursorPosition();
+        lastStylusState.x = cursor.x;
+        lastStylusState.y = cursor.y;
+        lastStylusState.mouse = mInjector.stylusIsMouse;
+        lastRawStylusState.setFrom(lastStylusState);
         if (mDisplayManager == null) {
             mDisplayManager = (DisplayManager) mActivity.getSystemService(Context.DISPLAY_SERVICE);
             mDisplayRotation = mDisplayManager.getDisplay(Display.DEFAULT_DISPLAY).getRotation() % 4;
@@ -432,6 +440,7 @@ public class TouchInputHandler {
         mInjector.capturedPointerSpeedFactor = ((float) p.capturedPointerSpeedFactor.get())/100;
         mInjector.dexMetaKeyCapture = p.dexMetaKeyCapture.get();
         mInjector.stylusIsMouse = p.stylusIsMouse.get();
+        lastStylusState.mouse = mInjector.stylusIsMouse;
         mInjector.stylusButtonContactModifierMode = p.stylusButtonContactModifierMode.get();
         mInjector.pauseKeyInterceptingWithEsc = p.pauseKeyInterceptingWithEsc.get();
         switch (p.transformCapturedPointer.get()) {
@@ -972,19 +981,74 @@ public class TouchInputHandler {
             }
 
             android.util.Log.d("STYLUS_EVENT", "action " + action + " x " + newX + " y " + newY + " pressure " + e.getPressure() + " tilt " + e.getAxisValue(MotionEvent.AXIS_TILT) + " orientation " + e.getAxisValue(MotionEvent.AXIS_ORIENTATION) + " buttonState " + e.getButtonState() + " extractedButtons " + newButtons);
-            mInjector.sendStylusEvent(
-                    x = newX,
-                    y = newY,
-                    (int) ((pressure = e.getPressure()) * 65535),
-                    tiltX,
-                    tiltY,
-                    convertOrientation(orientation),
-                    buttons = newButtons,
-                    e.getToolType(e.getActionIndex()) == MotionEvent.TOOL_TYPE_ERASER,
-                    mInjector.stylusIsMouse);
+            StylusState state = new StylusState();
+            x = newX;
+            y = newY;
+            pressure = e.getPressure();
+            buttons = newButtons;
+            state.x = x;
+            state.y = y;
+            state.pressure = (int) (pressure * 65535);
+            state.tiltX = tiltX;
+            state.tiltY = tiltY;
+            state.orientation = convertOrientation(orientation);
+            state.buttons = newButtons;
+            state.eraser = e.getToolType(e.getActionIndex()) == MotionEvent.TOOL_TYPE_ERASER;
+            state.mouse = mInjector.stylusIsMouse;
+            sendStylusState(state);
 
             return true;
         }
+    }
+
+    public StylusState getLastStylusState() {
+        return lastStylusState.copy();
+    }
+
+    public StylusState getLastRawStylusState() {
+        return lastRawStylusState.copy();
+    }
+
+    public int getStylusToggleMask() {
+        return stylusToggleMask;
+    }
+
+    public void applyStylusToggleMask(int mask) {
+        stylusToggleMask = mask;
+        // Re-send current state so the overlay takes effect immediately.
+        sendStylusState(getLastRawStylusState());
+    }
+
+    public void sendStylusState(StylusState state) {
+        if (state == null)
+            return;
+
+        StylusState next = state.copy();
+        if (Float.isNaN(next.x) || Float.isNaN(next.y)) {
+            PointF cursor = mRenderData.getCursorPosition();
+            next.x = cursor.x;
+            next.y = cursor.y;
+        }
+
+        if (!next.mouse)
+            next.mouse = mInjector.stylusIsMouse;
+
+        next.buttons |= stylusToggleMask;
+        StylusState raw = next.copy();
+        raw.buttons &= ~stylusToggleMask;
+        lastRawStylusState.setFrom(raw);
+
+        int baseButtons = raw.buttons;
+        next.buttons = baseButtons | stylusToggleMask;
+
+        lastStylusState.setFrom(next);
+        mInjector.sendStylusEvent(next.x, next.y, next.pressure, next.tiltX, next.tiltY, next.orientation, next.buttons, next.eraser, next.mouse);
+    }
+
+    public void sendStylusButtons(int newButtons) {
+        StylusState next = getLastStylusState();
+        next.buttons = newButtons;
+        sendStylusState(next);
     }
 
     /** @noinspection NullableProblems*/

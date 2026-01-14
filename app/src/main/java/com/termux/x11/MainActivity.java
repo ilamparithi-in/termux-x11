@@ -53,6 +53,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -60,16 +61,17 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.math.MathUtils;
 import androidx.viewpager.widget.ViewPager;
 
+import java.util.Map;
+
 import com.termux.x11.input.InputEventSender;
 import com.termux.x11.input.InputStub;
+import com.termux.x11.input.LenovoPenButtonMapper;
 import com.termux.x11.input.TouchInputHandler;
 import com.termux.x11.utils.FullscreenWorkaround;
 import com.termux.x11.utils.KeyInterceptor;
 import com.termux.x11.utils.SamsungDexUtils;
 import com.termux.x11.utils.TermuxX11ExtraKeys;
 import com.termux.x11.utils.X11ToolbarViewPager;
-
-import java.util.Map;
 
 @SuppressLint("ApplySharedPref")
 @SuppressWarnings({"deprecation", "unused"})
@@ -92,6 +94,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean filterOutWinKey = false;
     boolean useTermuxEKBarBehaviour = false;
     private boolean isInPictureInPictureMode = false;
+
+    private LenovoPenButtonMapper lenovoPenButtonMapper;
 
     public static Prefs prefs = null;
 
@@ -175,6 +179,8 @@ public class MainActivity extends AppCompatActivity {
         View lorieParent = (View) lorieView.getParent();
 
         mInputHandler = new TouchInputHandler(this, new InputEventSender(lorieView));
+        lenovoPenButtonMapper = new LenovoPenButtonMapper(this, mInputHandler);
+        lenovoPenButtonMapper.reloadPreferences(prefs);
         mLorieKeyListener = (v, k, e) -> {
             InputDevice dev = e.getDevice();
             boolean result = mInputHandler.sendKeyEvent(e);
@@ -582,6 +588,8 @@ public class MainActivity extends AppCompatActivity {
         LorieView lorieView = getLorieView();
 
         mInputHandler.reloadPreferences(prefs);
+        if (lenovoPenButtonMapper != null)
+            lenovoPenButtonMapper.reloadPreferences(prefs);
         lorieView.reloadPreferences(prefs);
 
         setTerminalToolbarView();
@@ -687,9 +695,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public boolean handleKey(KeyEvent e) {
+        if (lenovoPenButtonMapper != null && lenovoPenButtonMapper.onKeyEvent(e))
+            return true;
         if (filterOutWinKey && (e.getKeyCode() == KEYCODE_META_LEFT || e.getKeyCode() == KEYCODE_META_RIGHT || e.isMetaPressed()))
             return false;
         return mLorieKeyListener.onKey(getLorieView(), e.getKeyCode(), e);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        // Ensure Lenovo pen button events are intercepted even if the view key listener is bypassed.
+        if (handleKey(event))
+            return true;
+        return super.dispatchKeyEvent(event);
     }
 
     @SuppressLint("ObsoleteSdkInt")
@@ -911,4 +929,5 @@ public class MainActivity extends AppCompatActivity {
             inputMethodManager.hideSoftInputFromWindow(getWindow().getDecorView().getRootView().getWindowToken(), 0);
         getLorieView().requestFocus();
     }
+
 }
