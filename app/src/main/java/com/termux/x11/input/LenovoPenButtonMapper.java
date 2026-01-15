@@ -28,6 +28,7 @@ public final class LenovoPenButtonMapper {
     private final Map<PenButtonEvent, GestureConfig> configs = new EnumMap<>(PenButtonEvent.class);
     private final Map<PenButtonEvent, Runnable> pendingReleases = new EnumMap<>(PenButtonEvent.class);
     private int toggledMask = 0;
+    private int pressHoldMask = 0;
     private int offOnLiftMask = 0;
     private boolean tipDown = false;
     private boolean showDetections;
@@ -49,8 +50,10 @@ public final class LenovoPenButtonMapper {
         showToggleDebug = prefs.lenovoPenDebugToggleToasts.get();
         // Clear toggle state and pending releases when preferences change so we don't carry stale bits.
         toggledMask = 0;
+        pressHoldMask = 0;
         offOnLiftMask = 0;
         inputHandler.applyStylusToggleMask(0);
+        inputHandler.applyStylusHoldMask(0);
         pendingReleases.values().forEach(handler::removeCallbacks);
         pendingReleases.clear();
         configs.put(PenButtonEvent.SINGLE_PRESS, buildConfig(
@@ -147,12 +150,12 @@ public final class LenovoPenButtonMapper {
 
     private void applyToggle(int buttonMask, PenButtonEvent event) {
         // Toggle overrides any active press on the same buttons.
-        toggledMask &= ~buttonMask;
+        if ((pressHoldMask & buttonMask) != 0) {
+            pressHoldMask &= ~buttonMask;
+            inputHandler.applyStylusHoldMask(pressHoldMask);
+        }
         toggledMask ^= buttonMask;
         boolean on = (toggledMask & buttonMask) != 0;
-        StylusState current = inputHandler.getLastStylusState();
-        int targetButtons = (current.buttons & ~buttonMask) | (on ? buttonMask : 0);
-        inputHandler.sendStylusButtons(targetButtons);
         inputHandler.applyStylusToggleMask(toggledMask);
 
         GestureConfig cfg = configs.get(event);
@@ -161,6 +164,8 @@ public final class LenovoPenButtonMapper {
                 offOnLiftMask |= buttonMask;
             else
                 offOnLiftMask &= ~buttonMask;
+        } else {
+            offOnLiftMask &= ~buttonMask;
         }
 
         if (showToggleDebug) {
@@ -176,18 +181,12 @@ public final class LenovoPenButtonMapper {
             inputHandler.applyStylusToggleMask(toggledMask);
         }
         offOnLiftMask &= ~buttonMask;
-        StylusState before = inputHandler.getLastStylusState();
-        boolean maskWasSet = (before.buttons & buttonMask) != 0;
-        inputHandler.sendStylusButtons(before.buttons | buttonMask);
+        pressHoldMask |= buttonMask;
+        inputHandler.applyStylusHoldMask(pressHoldMask);
 
         Runnable release = () -> {
-            StylusState current = inputHandler.getLastStylusState();
-            int releaseButtons = current.buttons;
-            if (maskWasSet)
-                releaseButtons |= buttonMask;
-            else
-                releaseButtons &= ~buttonMask;
-            inputHandler.sendStylusButtons(releaseButtons);
+            pressHoldMask &= ~buttonMask;
+            inputHandler.applyStylusHoldMask(pressHoldMask);
         };
         pendingReleases.put(event, release);
         handler.postDelayed(release, Math.max(0, durationMs));

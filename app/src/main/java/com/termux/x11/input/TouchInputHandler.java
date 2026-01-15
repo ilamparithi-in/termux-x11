@@ -96,6 +96,7 @@ public class TouchInputHandler {
     private final StylusState lastStylusState = new StylusState();
     private final StylusState lastRawStylusState = new StylusState();
     private int stylusToggleMask = 0;
+    private int stylusHoldMask = 0;
     private final ArrayList<StylusStateListener> stylusStateListeners = new ArrayList<>();
 
     private final BiConsumer<Integer, Boolean> noAction = (key, down) -> {};
@@ -1030,6 +1031,12 @@ public class TouchInputHandler {
         sendStylusState(getLastRawStylusState());
     }
 
+    public void applyStylusHoldMask(int mask) {
+        stylusHoldMask = mask;
+        // Re-send current state so the overlay takes effect immediately.
+        sendStylusState(getLastRawStylusState());
+    }
+
     public void sendStylusState(StylusState state) {
         if (state == null)
             return;
@@ -1046,11 +1053,11 @@ public class TouchInputHandler {
 
         next.buttons |= stylusToggleMask;
         StylusState raw = next.copy();
-        raw.buttons &= ~stylusToggleMask;
+        raw.buttons &= ~(stylusToggleMask | stylusHoldMask);
         lastRawStylusState.setFrom(raw);
 
         int baseButtons = raw.buttons;
-        next.buttons = baseButtons | stylusToggleMask;
+        next.buttons = baseButtons | stylusToggleMask | stylusHoldMask;
 
         lastStylusState.setFrom(next);
         mInjector.sendStylusEvent(next.x, next.y, next.pressure, next.tiltX, next.tiltY, next.orientation, next.buttons, next.eraser, next.mouse);
