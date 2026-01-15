@@ -77,6 +77,8 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="pref_lenovoPenToggleSummary">Off: press and hold target for the specified duration. On: toggle, gesture once for down and again for up.</string>
     <string name="pref_lenovoPenToggleSummary_off">Off: press and hold target for the specified duration.</string>
     <string name="pref_lenovoPenToggleSummary_on">On: toggle, gesture once for down and again for up.</string>
+    <string name="pref_lenovoPenToggleOffOnLiftTitle">Toggle OFF on lift</string>
+    <string name="pref_lenovoPenToggleOffOnLiftSummary">When toggled on and pen lifts after contact, release the mapped button automatically.</string>
     <string name="pref_lenovoPenDurationTitle">Hold duration (ms)</string>
     <string name="pref_lenovoPenDurationDialog">Hold duration in milliseconds</string>
     <string name="pref_lenovoPenSinglePressTitle">Single Press (600)</string>

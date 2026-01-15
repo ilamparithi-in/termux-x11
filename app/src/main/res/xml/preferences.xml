@@ -94,30 +94,35 @@
         <PreferenceCategory app:title="@string/pref_lenovoPenSinglePressTitle">
             <ListPreference app:key="lenovoPenSinglePressAction" app:defaultValue="disabled" app:title="@string/pref_lenovoPenMapTo" app:entries="@array/lenovoPenActionEntries" app:entryValues="@array/lenovoPenActionValues" app:useSimpleSummaryProvider="true" />
             <SwitchPreferenceCompat app:key="lenovoPenSinglePressToggle" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleTitle" app:summary="@string/pref_lenovoPenToggleSummary" />
+            <SwitchPreferenceCompat app:key="lenovoPenSinglePressToggleOffOnLift" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleOffOnLiftTitle" app:summary="@string/pref_lenovoPenToggleOffOnLiftSummary" />
             <EditTextPreference app:key="lenovoPenSinglePressDurationMs" app:defaultValue="150" app:title="@string/pref_lenovoPenDurationTitle" app:dialogTitle="@string/pref_lenovoPenDurationDialog" app:useSimpleSummaryProvider="true" android:inputType="number" />
         </PreferenceCategory>
 
         <PreferenceCategory app:title="@string/pref_lenovoPenDoublePressTitle">
             <ListPreference app:key="lenovoPenDoublePressAction" app:defaultValue="disabled" app:title="@string/pref_lenovoPenMapTo" app:entries="@array/lenovoPenActionEntries" app:entryValues="@array/lenovoPenActionValues" app:useSimpleSummaryProvider="true" />
             <SwitchPreferenceCompat app:key="lenovoPenDoublePressToggle" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleTitle" app:summary="@string/pref_lenovoPenToggleSummary" />
+            <SwitchPreferenceCompat app:key="lenovoPenDoublePressToggleOffOnLift" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleOffOnLiftTitle" app:summary="@string/pref_lenovoPenToggleOffOnLiftSummary" />
             <EditTextPreference app:key="lenovoPenDoublePressDurationMs" app:defaultValue="150" app:title="@string/pref_lenovoPenDurationTitle" app:dialogTitle="@string/pref_lenovoPenDurationDialog" app:useSimpleSummaryProvider="true" android:inputType="number" />
         </PreferenceCategory>
 
         <PreferenceCategory app:title="@string/pref_lenovoPenTriplePressTitle">
             <ListPreference app:key="lenovoPenTriplePressAction" app:defaultValue="disabled" app:title="@string/pref_lenovoPenMapTo" app:entries="@array/lenovoPenActionEntries" app:entryValues="@array/lenovoPenActionValues" app:useSimpleSummaryProvider="true" />
             <SwitchPreferenceCompat app:key="lenovoPenTriplePressToggle" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleTitle" app:summary="@string/pref_lenovoPenToggleSummary" />
+            <SwitchPreferenceCompat app:key="lenovoPenTriplePressToggleOffOnLift" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleOffOnLiftTitle" app:summary="@string/pref_lenovoPenToggleOffOnLiftSummary" />
             <EditTextPreference app:key="lenovoPenTriplePressDurationMs" app:defaultValue="150" app:title="@string/pref_lenovoPenDurationTitle" app:dialogTitle="@string/pref_lenovoPenDurationDialog" app:useSimpleSummaryProvider="true" android:inputType="number" />
         </PreferenceCategory>
 
         <PreferenceCategory app:title="@string/pref_lenovoPenLongPressTitle">
             <ListPreference app:key="lenovoPenLongPressAction" app:defaultValue="disabled" app:title="@string/pref_lenovoPenMapTo" app:entries="@array/lenovoPenActionEntries" app:entryValues="@array/lenovoPenActionValues" app:useSimpleSummaryProvider="true" />
             <SwitchPreferenceCompat app:key="lenovoPenLongPressToggle" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleTitle" app:summary="@string/pref_lenovoPenToggleSummary" />
+            <SwitchPreferenceCompat app:key="lenovoPenLongPressToggleOffOnLift" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleOffOnLiftTitle" app:summary="@string/pref_lenovoPenToggleOffOnLiftSummary" />
             <EditTextPreference app:key="lenovoPenLongPressDurationMs" app:defaultValue="150" app:title="@string/pref_lenovoPenDurationTitle" app:dialogTitle="@string/pref_lenovoPenDurationDialog" app:useSimpleSummaryProvider="true" android:inputType="number" />
         </PreferenceCategory>
 
         <PreferenceCategory app:title="@string/pref_lenovoPenLongPressClickTitle">
             <ListPreference app:key="lenovoPenLongPressClickAction" app:defaultValue="disabled" app:title="@string/pref_lenovoPenMapTo" app:entries="@array/lenovoPenActionEntries" app:entryValues="@array/lenovoPenActionValues" app:useSimpleSummaryProvider="true" />
             <SwitchPreferenceCompat app:key="lenovoPenLongPressClickToggle" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleTitle" app:summary="@string/pref_lenovoPenToggleSummary" />
+            <SwitchPreferenceCompat app:key="lenovoPenLongPressClickToggleOffOnLift" app:defaultValue="false" app:title="@string/pref_lenovoPenToggleOffOnLiftTitle" app:summary="@string/pref_lenovoPenToggleOffOnLiftSummary" />
             <EditTextPreference app:key="lenovoPenLongPressClickDurationMs" app:defaultValue="150" app:title="@string/pref_lenovoPenDurationTitle" app:dialogTitle="@string/pref_lenovoPenDurationDialog" app:useSimpleSummaryProvider="true" android:inputType="number" />
         </PreferenceCategory>
     </PreferenceScreen>

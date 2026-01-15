@@ -41,6 +41,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -95,6 +96,7 @@ public class TouchInputHandler {
     private final StylusState lastStylusState = new StylusState();
     private final StylusState lastRawStylusState = new StylusState();
     private int stylusToggleMask = 0;
+    private final ArrayList<StylusStateListener> stylusStateListeners = new ArrayList<>();
 
     private final BiConsumer<Integer, Boolean> noAction = (key, down) -> {};
     private BiConsumer<Integer, Boolean> swipeUpAction = noAction, swipeDownAction = noAction,
@@ -1009,6 +1011,15 @@ public class TouchInputHandler {
         return lastRawStylusState.copy();
     }
 
+    public void addStylusStateListener(StylusStateListener listener) {
+        if (listener != null && !stylusStateListeners.contains(listener))
+            stylusStateListeners.add(listener);
+    }
+
+    public void removeStylusStateListener(StylusStateListener listener) {
+        stylusStateListeners.remove(listener);
+    }
+
     public int getStylusToggleMask() {
         return stylusToggleMask;
     }
@@ -1043,6 +1054,16 @@ public class TouchInputHandler {
 
         lastStylusState.setFrom(next);
         mInjector.sendStylusEvent(next.x, next.y, next.pressure, next.tiltX, next.tiltY, next.orientation, next.buttons, next.eraser, next.mouse);
+
+        if (!stylusStateListeners.isEmpty()) {
+            StylusState dispatch = next.copy();
+            for (StylusStateListener listener : new ArrayList<>(stylusStateListeners))
+                listener.onStylusState(dispatch);
+        }
+    }
+
+    public interface StylusStateListener {
+        void onStylusState(StylusState state);
     }
 
     public void sendStylusButtons(int newButtons) {

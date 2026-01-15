@@ -27,6 +27,9 @@ local.properties
 .idea/
 *.iml
 
+# VSCode
+.vscode/
+
 # OS-specific files
 .DS_Store
 .DS_Store?
