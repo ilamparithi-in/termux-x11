@@ -66,6 +66,8 @@ public class ImeHeightProvider {
     // Both sources measure from the bottom of the screen, so they include the navigation bar
     // whenever it is shown below the keyboard - that space is already handled by fitsSystemWindows.
     private static void report(MainActivity activity, FrameLayout content, int bottom, WindowInsetsCompat insets) {
+        if (activity == null)
+            return;
         View child = content.getChildAt(0);
         int imeHeight = 0;
         if (activity.hasWindowFocus() && !SamsungDexUtils.checkDeXEnabled(activity) && !activity.isInPictureInPictureMode()) {
