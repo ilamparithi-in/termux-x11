@@ -100,8 +100,10 @@ afterEvaluate {
         preferences.each { out << '    put("' + it.key + '", ' + it.key + ');\n' }
         out << '    put("extra_keys_config", extra_keys_config);\n'
         out << '  }};\n'
-        out << '\n'
         out << '  public Prefs() {}\n'
+        out << '  public Prefs(Context ctx) {\n'
+        out << '    attach(ctx, PreferenceManager.getDefaultSharedPreferences(ctx));\n'
+        out << '  }\n'
         out << '\n'
         out << '  @Override\n'
         out << '  public void attach(Context ctx, SharedPreferences preferences) {\n'
