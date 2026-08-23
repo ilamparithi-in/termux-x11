@@ -143,7 +143,8 @@ static jlong nativeInit(JNIEnv *env, jobject thiz) {
 
         MainActivity.self = FindClassOrDie(env,  "com/termux/x11/MainActivity");
         MainActivity.clientConnectedStateChanged = FindMethodOrDie(env, MainActivity.self, "clientConnectedStateChanged", "()V", JNI_FALSE);
-        MainActivity.resetIme = FindMethodOrDie(env, env->GetObjectClass(thiz), "resetIme", "()V", JNI_FALSE);
+        MainActivity.resetIme = env->GetMethodID(env->GetObjectClass(thiz), "resetIme", "()V");
+        if (env->ExceptionCheck()) env->ExceptionClear();
     }
 
     return (jlong) (intptr_t) new (malloc(sizeof(LorieViewResources))) LorieViewResources(env, thiz);
@@ -263,12 +264,12 @@ int LorieViewResources::xcallback(int fd, int events) {
                     break;
                 }
                 case EVENT_WINDOW_FOCUS_CHANGED: {
-                    env->CallVoidMethod(thiz, MainActivity.resetIme);
+                    if (MainActivity.resetIme && thiz) env->CallVoidMethod(thiz, MainActivity.resetIme);
                     break;
                 }
                 case EVENT_SYNC_REPLY: {
                     jmethodID id = env->GetMethodID(env->GetObjectClass(thiz), "onSyncReply", "(I)V");
-                    env->CallVoidMethod(thiz, id, (jint) e.sync.serial);
+                    if (id && thiz) env->CallVoidMethod(thiz, id, (jint) e.sync.serial);
                     break;
                 }
             }
@@ -479,7 +480,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, __unused void *reserved) {
                 lastInputTimestampMs = nowMs();
                 auto* r = (LorieViewResources*) ptr;
                 if (r && r->connFd != -1) {
-                    if (which_button > 0)
+                    if (which_button > 0 && MainActivity.resetIme && r->thiz)
                         env->CallVoidMethod(r->thiz, MainActivity.resetIme);
                     sendEvent(r, .mouse = { .t = EVENT_MOUSE, .x = x, .y = y, .detail = (uint8_t) which_button, .down = button_down, .relative = relative });
                 }
@@ -490,11 +491,10 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, __unused void *reserved) {
                 if (action != -1)
                     sendEvent(r, .touch = { .t = EVENT_TOUCH, .type = (uint16_t) action, .id = (uint16_t) id, .x = (uint16_t) x, .y = (uint16_t) y });
             }},
-            {"sendStylusEvent", "(JFFIIIIIZZ)V", (void *) +[](JNIEnv *env, __unused jobject thiz, jlong ptr, jfloat x, jfloat y, jint pressure, jint tilt_x, jint tilt_y, jint orientation, jint buttons, jboolean eraser, jboolean mouse) {
+            {"sendStylusEvent", "(JFFIIIIIZZ)V", (void *) +[](__unused JNIEnv *env, __unused jobject thiz, jlong ptr, jfloat x, jfloat y, jint pressure, jint tilt_x, jint tilt_y, jint orientation, jint buttons, jboolean eraser, jboolean mouse) {
                 lastInputTimestampMs = nowMs();
                 auto* r = (LorieViewResources*) ptr;
                 if (r && r->connFd != -1) {
-                    env->CallVoidMethod(r->thiz, MainActivity.resetIme);
                     sendEvent(r, .stylus = { .t = EVENT_STYLUS, .x = x, .y = y, .pressure = (uint16_t) pressure, .tilt_x = (int8_t) tilt_x, .tilt_y = (int8_t) tilt_y, .orientation = (int16_t) orientation, .buttons = (uint8_t) buttons, .eraser = eraser, .mouse = mouse });
                 }
             }},
