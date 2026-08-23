@@ -284,11 +284,8 @@ InitInput(__unused int argc, __unused char *argv[]) {
     AttachDevice(NULL, lorieTouch, inputInfo.pointer);
     AttachDevice(NULL, lorieKeyboard, inputInfo.keyboard);
 
-    // We should explicitly create stylus pen and eraser devices here for the case of X server reset.
-    if (loriePen && lorieEraser) {
-        loriePen = lorieEraser = NULL;
-        lorieSetStylusEnabled(true);
-    }
+    loriePen = lorieEraser = NULL;
+    lorieSetStylusEnabled(TRUE);
 
     (void) mieqInit();
 }
