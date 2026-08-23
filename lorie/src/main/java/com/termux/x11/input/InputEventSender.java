@@ -239,7 +239,7 @@ public final class InputEventSender {
         // For Enter getUnicodeChar() returns 10 (line feed), but we still
         // want to send it as KeyEvent.
         char unicode = keyCode != KEYCODE_ENTER ? (char) e.getUnicodeChar() : 0;
-        int scancode = (preferScancodes || !no_modifiers) ? e.getScanCode(): 0;
+        int scancode = preferScancodes ? e.getScanCode() : 0;
 
         if (!preferScancodes) {
             if (pressed && unicode != 0 && no_modifiers) {
