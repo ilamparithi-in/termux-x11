@@ -33,6 +33,7 @@ import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.os.SystemClock;
@@ -76,6 +77,7 @@ import androidx.viewpager.widget.ViewPager;
 import com.termux.x11.extrakeys.ExtraKeysInfo;
 import com.termux.x11.input.InputEventSender;
 import com.termux.x11.input.InputStub;
+import com.termux.x11.input.LenovoPenButtonMapper;
 import com.termux.x11.input.TouchInputHandler;
 import com.termux.x11.utils.ImeHeightProvider;
 import com.termux.x11.utils.KeyInterceptor;
@@ -91,10 +93,11 @@ public class MainActivity extends AppCompatActivity {
     public static final String ACTION_STOP = "com.termux.x11.ACTION_STOP";
     public static final String ACTION_CUSTOM = "com.termux.x11.ACTION_CUSTOM";
 
-    public static Handler handler = new Handler();
+    public static Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable connectRetry = this::tryConnect;
     FrameLayout frm;
     TouchInputHandler mInputHandler;
+    private LenovoPenButtonMapper mLenovoPenMapper;
     protected ICmdEntryInterface service = null;
     public TermuxX11ExtraKeys mExtraKeys;
     private Notification mNotification;
@@ -166,8 +169,12 @@ public class MainActivity extends AppCompatActivity {
         instance = this;
     }
 
-    public static Prefs getPrefs() {
+    public static synchronized Prefs getPrefs() {
         return prefs;
+    }
+
+    public static synchronized void setPrefs(Prefs p) {
+        prefs = p;
     }
 
     public static MainActivity getInstance() {
@@ -212,6 +219,8 @@ public class MainActivity extends AppCompatActivity {
         View lorieParent = (View) lorieView.getParent();
 
         mInputHandler = new TouchInputHandler(this, new InputEventSender(this, lorieView));
+        mLenovoPenMapper = new LenovoPenButtonMapper(this, mInputHandler);
+        mLenovoPenMapper.reloadPreferences(prefs);
         mLorieKeyListener = (v, k, e) -> {
             InputDevice dev = e.getDevice();
             boolean result = mInputHandler.sendKeyEvent(e);
@@ -657,6 +666,8 @@ public class MainActivity extends AppCompatActivity {
         LorieView lorieView = getLorieView();
 
         mInputHandler.reloadPreferences(prefs);
+        if (mLenovoPenMapper != null)
+            mLenovoPenMapper.reloadPreferences(prefs);
         lorieView.reloadPreferences(prefs);
 
         if (mExtraKeys != null)
@@ -850,6 +861,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public boolean handleKey(KeyEvent e) {
+        if (mLenovoPenMapper != null && mLenovoPenMapper.onKeyEvent(e))
+            return true;
         if (filterOutWinKey && (e.getKeyCode() == KEYCODE_META_LEFT || e.getKeyCode() == KEYCODE_META_RIGHT || e.isMetaPressed()))
             return false;
         return mLorieKeyListener.onKey(getLorieView(), e.getKeyCode(), e);

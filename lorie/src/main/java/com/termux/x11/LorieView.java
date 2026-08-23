@@ -210,7 +210,7 @@ public class LorieView extends SurfaceView implements InputStub {
 
             currentComposingText = reuse ? newText : null;
 
-            if (activity.useTermuxEKBarBehaviour && activity.mExtraKeys != null)
+            if (activity != null && activity.useTermuxEKBarBehaviour && activity.mExtraKeys != null)
                 activity.mExtraKeys.unsetSpecialKeys();
             commitedText = true;
             return true;
@@ -354,8 +354,17 @@ public class LorieView extends SurfaceView implements InputStub {
         }
     }
 
+    public Prefs getPrefs() {
+        Prefs p = MainActivity.getPrefs();
+        if (p == null) {
+            p = new Prefs(getContext());
+            MainActivity.setPrefs(p);
+        }
+        return p;
+    }
+
     void getDimensionsFromSettings(int width, int height) {
-        Prefs prefs = MainActivity.getPrefs();
+        Prefs prefs = getPrefs();
         int w = width;
         int h = height;
         switch(prefs.displayResolutionMode.get()) {
@@ -419,7 +428,7 @@ public class LorieView extends SurfaceView implements InputStub {
 
         if (getDisplay() == null || getDisplay().getDisplayId() == Display.DEFAULT_DISPLAY)
             name = "builtin";
-        else if (SamsungDexUtils.checkDeXEnabled(activity))
+        else if (activity != null && SamsungDexUtils.checkDeXEnabled(activity))
             name = "dex";
         else
             name = "external";
@@ -479,7 +488,7 @@ public class LorieView extends SurfaceView implements InputStub {
     }
 
     private void updateViewport() {
-        Prefs prefs = MainActivity.getPrefs();
+        Prefs prefs = getPrefs();
 
         int surfaceW = getMeasuredWidth(), surfaceH = getMeasuredHeight();
         // Views the insets reserve room for are hidden while the dimensions are frozen.
@@ -568,7 +577,7 @@ public class LorieView extends SurfaceView implements InputStub {
         if (hardwareKbdScancodesWorkaround)
             return false;
 
-        return activity.handleKey(event);
+        return activity != null ? activity.handleKey(event) : super.dispatchKeyEventPreIme(event);
     }
 
     @Override
@@ -654,7 +663,7 @@ public class LorieView extends SurfaceView implements InputStub {
 
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
-        if (MainActivity.getPrefs().enforceCharBasedInput.get())
+        if (getPrefs().enforceCharBasedInput.get())
             outAttrs.inputType = InputType.TYPE_NULL;
         else
             outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_TEXT_VARIATION_NORMAL;
@@ -700,8 +709,10 @@ public class LorieView extends SurfaceView implements InputStub {
     @FastNative private native long getCursorPosition(long ptr);
     @FastNative private native void sendSync(long ptr, int serial);
 
-    // Public API stays free of the native pointer; it's threaded through to an overload below.
-    public void connect(int fd) { connect(mNativeContext, fd); }
+    public void connect(int fd) {
+        connect(mNativeContext, fd);
+        post(this::updateViewport);
+    }
     @FastNative private static native void connect(long ptr, int fd);
 
     public boolean connected() { return connected(mNativeContext); }

@@ -48,8 +48,15 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         Looper.loop();
     }
 
-    CmdEntryPoint(String[] args) {
-        if (!start(args))
+    public CmdEntryPoint(String[] args) {
+        this(null, args);
+    }
+
+    public CmdEntryPoint(Context context, String[] args) {
+        if (context != null) {
+            ctx = context.getApplicationContext();
+        }
+        if (!connected() && !start(args))
             System.exit(1);
     }
 
@@ -86,13 +93,15 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
 
     static void sendBroadcast(Intent intent) {
         try {
-            ctx.sendBroadcast(intent);
-        } catch (Exception e) {
-            if (e instanceof NullPointerException && ctx == null)
-                Log.i("Broadcast", "Context is null, falling back to manual broadcasting");
-            else
-                Log.e("Broadcast", "Falling back to manual broadcasting, failed to broadcast intent through Context:", e);
+            if (ctx != null) {
+                ctx.sendBroadcast(intent);
+                return;
+            }
+        } catch (Throwable e) {
+            Log.e("Broadcast", "Failed to broadcast intent through Context:", e);
+        }
 
+        try {
             String packageName;
             try {
                 packageName = android.app.ActivityThread.getPackageManager().getPackagesForUid(getuid())[0];
@@ -115,19 +124,20 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
                 }
             }
 
-            assert am != null;
-            IIntentSender sender = am.getIntentSender(1, packageName, null, null, 0, new Intent[] { intent },
-                    null, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_ONE_SHOT, null, 0);
-            try {
-                //noinspection JavaReflectionMemberAccess
-                IIntentSender.class
-                        .getMethod("send", int.class, Intent.class, String.class, IBinder.class, IIntentReceiver.class, String.class, Bundle.class)
-                        .invoke(sender, 0, intent, null, null, new IIntentReceiver.Stub() {
-                            @Override public void performReceive(Intent i, int r, String d, Bundle e, boolean o, boolean s, int a) {}
-                        }, null, null);
-            } catch (Exception ex) {
-                throw new RuntimeException(ex);
+            if (am != null) {
+                IIntentSender sender = am.getIntentSender(1, packageName, null, null, 0, new Intent[] { intent },
+                        null, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_ONE_SHOT, null, 0);
+                if (sender != null) {
+                    //noinspection JavaReflectionMemberAccess
+                    IIntentSender.class
+                            .getMethod("send", int.class, Intent.class, String.class, IBinder.class, IIntentReceiver.class, String.class, Bundle.class)
+                            .invoke(sender, 0, intent, null, null, new IIntentReceiver.Stub() {
+                                @Override public void performReceive(Intent i, int r, String d, Bundle e, boolean o, boolean s, int a) {}
+                            }, null, null);
+                }
             }
+        } catch (Throwable ex) {
+            Log.w("Broadcast", "Manual broadcast via reflection not supported on this Android platform version: " + ex.getMessage());
         }
     }
 
@@ -182,7 +192,7 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         } catch (Exception e) {
             Log.e("CmdEntryPoint", "Something went wrong when preparing MainLooper", e);
         }
-        handler = new Handler();
+        handler = new Handler(Looper.getMainLooper());
     }
 
     private static void initEntryPoint() {

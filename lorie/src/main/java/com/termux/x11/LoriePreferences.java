@@ -30,6 +30,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.preference.ListPreference;
 import androidx.preference.Preference;
+import androidx.preference.SwitchPreferenceCompat;
 
 import android.os.Handler;
 import android.os.IBinder;
@@ -251,7 +252,10 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
         @SuppressLint("DiscouragedApi")
         int findId(String name) {
             //noinspection DataFlowIssue
-            return getResources().getIdentifier("lorie_pref_" + name, "string", getContext().getPackageName());
+            int id = getResources().getIdentifier("lorie_pref_" + name, "string", getContext().getPackageName());
+            if (id == 0)
+                id = getResources().getIdentifier("pref_" + name, "string", getContext().getPackageName());
+            return id;
         }
 
         /** @noinspection DataFlowIssue*/
@@ -315,10 +319,27 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
             setVisible("showStylusClickOverride", stylusAvailable);
             setVisible("stylusIsMouse", stylusAvailable);
             setVisible("stylusButtonContactModifierMode", stylusAvailable);
+            setVisible("lenovoPenMappingEntry", stylusAvailable);
+
+            setLenovoPenToggleSummary("lenovoPenSinglePressToggle");
+            setLenovoPenToggleSummary("lenovoPenDoublePressToggle");
+            setLenovoPenToggleSummary("lenovoPenTriplePressToggle");
+            setLenovoPenToggleSummary("lenovoPenLongPressToggle");
+            setLenovoPenToggleSummary("lenovoPenLongPressClickToggle");
 
             setNoActionOptionText(findPreference("volumeDownAction"), "android volume control");
             setNoActionOptionText(findPreference("volumeUpAction"), "android volume control");
             setNoActionOptionText(findPreference("mediaKeysAction"), "android media control");
+        }
+
+        private void setLenovoPenToggleSummary(CharSequence key) {
+            Preference pref = findPreference(key);
+            if (pref instanceof SwitchPreferenceCompat) {
+                ((SwitchPreferenceCompat) pref).setSummaryProvider(p -> {
+                    boolean checked = ((SwitchPreferenceCompat) p).isChecked();
+                    return getString(checked ? R.string.pref_lenovoPenToggleSummary_on : R.string.pref_lenovoPenToggleSummary_off);
+                });
+            }
         }
 
         private void setSummary(CharSequence key, int disabled) {
@@ -380,6 +401,30 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
             setVisible("requestNotificationPermission", requestNotificationPermissionVisible);
 
             updateScreenIdleTimeoutSummary();
+            updateLenovoPenPreferences();
+        }
+
+        private void updateLenovoPenPreferences() {
+            updateLenovoPenGesture("lenovoPenSinglePress");
+            updateLenovoPenGesture("lenovoPenDoublePress");
+            updateLenovoPenGesture("lenovoPenTriplePress");
+            updateLenovoPenGesture("lenovoPenLongPress");
+            updateLenovoPenGesture("lenovoPenLongPressClick");
+        }
+
+        private void updateLenovoPenGesture(String prefix) {
+            Preference actionPref = findPreference(prefix + "Action");
+            Preference togglePref = findPreference(prefix + "Toggle");
+            Preference offOnLiftPref = findPreference(prefix + "ToggleOffOnLift");
+            Preference durationPref = findPreference(prefix + "DurationMs");
+            if (actionPref instanceof ListPreference) {
+                String actionVal = ((ListPreference) actionPref).getValue();
+                boolean enabled = actionVal != null && !"disabled".contentEquals(actionVal);
+                if (togglePref != null) togglePref.setEnabled(enabled);
+                boolean isToggle = togglePref instanceof SwitchPreferenceCompat && ((SwitchPreferenceCompat) togglePref).isChecked();
+                if (offOnLiftPref != null) offOnLiftPref.setEnabled(enabled && isToggle);
+                if (durationPref != null) durationPref.setEnabled(enabled && !isToggle);
+            }
         }
 
         private static String formatTimeoutMinutes(long timeoutMs) {
@@ -502,6 +547,15 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
 
             if ("showAdditionalKbd".contentEquals(key) && (Boolean) newValue)
                 prefs.additionalKbdVisible.put(true);
+
+            if (key != null && key.startsWith("lenovoPen") && key.endsWith("DurationMs")) {
+                try {
+                    Integer.parseInt((String) newValue);
+                } catch (NumberFormatException ex) {
+                    Toast.makeText(getActivity(), "Please enter a number", Toast.LENGTH_SHORT).show();
+                    return false;
+                }
+            }
 
             if ("enableAccessibilityServiceAutomatically".contentEquals(key)) {
                 if (!((Boolean) newValue))
@@ -924,7 +978,7 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
                 try {
                     prefsCtx = ctx.createPackageContext(BuildConfig.APPLICATION_ID, 0);
                 } catch (PackageManager.NameNotFoundException e) {
-                    throw new RuntimeException(e);
+                    prefsCtx = ctx;
                 }
             }
 

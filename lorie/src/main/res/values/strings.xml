@@ -123,4 +123,25 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="lorie_pref_summary_requiresTrackpadAndNative">Requires "Touchscreen input mode" to be "Trackpad" and "Display resolution mode" to be not "native"</string>
     <string name="lorie_pref_summary_screenIdleTimeoutConflict">⚠️ System screen timeout (%s) is longer and takes priority</string>
     <string name="lorie_pref_screenIdleTimeoutSystem">System (%s)</string>
+
+    <string name="pref_lenovoPenMapping">Lenovo pen mapping</string>
+    <string name="pref_lenovoPenShowDetections">Show detections on screen</string>
+    <string name="pref_lenovoPenShowDetections_summary">Show toast for detected gestures</string>
+    <string name="pref_lenovoPenDebugToggleToasts">Show debug toggle toasts</string>
+    <string name="pref_lenovoPenDebugToggleToasts_summary">Show gesture/button state and hold duration when Lenovo pen mapping fires</string>
+    <string name="pref_lenovoPenGestureMappings">Gesture mappings</string>
+    <string name="pref_lenovoPenMapTo">Map to</string>
+    <string name="pref_lenovoPenToggleTitle">Toggle target button</string>
+    <string name="pref_lenovoPenToggleSummary">Off: press and hold target for the specified duration. On: toggle, gesture once for down and again for up.</string>
+    <string name="pref_lenovoPenToggleSummary_off">Off: press and hold target for the specified duration.</string>
+    <string name="pref_lenovoPenToggleSummary_on">On: toggle, gesture once for down and again for up.</string>
+    <string name="pref_lenovoPenToggleOffOnLiftTitle">Toggle OFF on lift</string>
+    <string name="pref_lenovoPenToggleOffOnLiftSummary">When toggled on and pen lifts after contact, release the mapped button automatically.</string>
+    <string name="pref_lenovoPenDurationTitle">Hold duration (ms)</string>
+    <string name="pref_lenovoPenDurationDialog">Hold duration in milliseconds</string>
+    <string name="pref_lenovoPenSinglePressTitle">Single Press (600)</string>
+    <string name="pref_lenovoPenDoublePressTitle">Double Press (601)</string>
+    <string name="pref_lenovoPenTriplePressTitle">Triple Press (602)</string>
+    <string name="pref_lenovoPenLongPressTitle">Long Press (603)</string>
+    <string name="pref_lenovoPenLongPressClickTitle">Long Press and Click (604)</string>
 </resources>

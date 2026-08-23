@@ -21,6 +21,7 @@ import androidx.annotation.NonNull;
 import com.termux.x11.extrakeys.*;
 import com.termux.x11.LoriePreferences;
 import com.termux.x11.MainActivity;
+import com.termux.x11.Prefs;
 
 import org.json.JSONException;
 
@@ -208,19 +209,21 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
         mExtraKeysInfo = null;
 
         try {
-            // The mMap stores the extra key and style string values while loading properties
-            // Check {@link #getExtraKeysInternalPropertyValueFromValue(String)} and
-            // {@link #getExtraKeysStyleInternalPropertyValueFromValue(String)}
-            String extrakeys = MainActivity.getPrefs().extra_keys_config.get();
+            Prefs p = MainActivity.getPrefs();
+            String extrakeys = p != null ? p.extra_keys_config.get() : TermuxX11ExtraKeys.DEFAULT_IVALUE_EXTRA_KEYS;
             mExtraKeysInfo = new ExtraKeysInfo(extrakeys, "extra-keys-style", ExtraKeysConstants.CONTROL_CHARS_ALIASES);
         } catch (JSONException e) {
-            Toast.makeText(mActivity, "Could not load and set the \"extra-keys\" property from the properties file: " + e, Toast.LENGTH_LONG).show();
+            if (mActivity != null) {
+                Toast.makeText(mActivity, "Could not load and set the \"extra-keys\" property from the properties file: " + e, Toast.LENGTH_LONG).show();
+            }
             Log.e(LOG_TAG, "Could not load and set the \"extra-keys\" property from the properties file: ", e);
 
             try {
                 mExtraKeysInfo = new ExtraKeysInfo(TermuxX11ExtraKeys.DEFAULT_IVALUE_EXTRA_KEYS, "default", ExtraKeysConstants.CONTROL_CHARS_ALIASES);
             } catch (JSONException e2) {
-                Toast.makeText(mActivity, "Can't create default extra keys", Toast.LENGTH_LONG).show();
+                if (mActivity != null) {
+                    Toast.makeText(mActivity, "Can't create default extra keys", Toast.LENGTH_LONG).show();
+                }
                 Log.e(LOG_TAG, "Could create default extra keys: ", e);
                 mExtraKeysInfo = null;
             }
