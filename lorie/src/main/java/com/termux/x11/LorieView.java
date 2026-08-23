@@ -210,7 +210,7 @@ public class LorieView extends SurfaceView implements InputStub {
 
             currentComposingText = reuse ? newText : null;
 
-            if (activity.useTermuxEKBarBehaviour && activity.mExtraKeys != null)
+            if (activity != null && activity.useTermuxEKBarBehaviour && activity.mExtraKeys != null)
                 activity.mExtraKeys.unsetSpecialKeys();
             commitedText = true;
             return true;
@@ -354,8 +354,31 @@ public class LorieView extends SurfaceView implements InputStub {
         }
     }
 
+    private Prefs mPrefs;
+
+    public void setPrefs(Prefs p) {
+        this.mPrefs = p;
+    }
+
+    public Prefs getPrefs() {
+        if (mPrefs != null) {
+            return mPrefs;
+        }
+        if (activity != null && activity.prefs != null) {
+            return activity.prefs;
+        }
+        Context ctx = getContext();
+        if (ctx != null && ctx.getApplicationContext() instanceof LorieApp) {
+            mPrefs = ((LorieApp) ctx.getApplicationContext()).getPrefs(activity != null ? activity : ctx);
+        } else if (ctx != null) {
+            mPrefs = new Prefs();
+            mPrefs.attach(ctx, android.preference.PreferenceManager.getDefaultSharedPreferences(ctx));
+        }
+        return mPrefs;
+    }
+
     void getDimensionsFromSettings(int width, int height) {
-        Prefs prefs = activity.prefs;
+        Prefs prefs = getPrefs();
         int w = width;
         int h = height;
         switch(prefs.displayResolutionMode.get()) {
@@ -419,7 +442,7 @@ public class LorieView extends SurfaceView implements InputStub {
 
         if (getDisplay() == null || getDisplay().getDisplayId() == Display.DEFAULT_DISPLAY)
             name = "builtin";
-        else if (SamsungDexUtils.checkDeXEnabled(activity))
+        else if (activity != null && SamsungDexUtils.checkDeXEnabled(activity))
             name = "dex";
         else
             name = "external";
@@ -479,7 +502,7 @@ public class LorieView extends SurfaceView implements InputStub {
     }
 
     private void updateViewport() {
-        Prefs prefs = activity.prefs;
+        Prefs prefs = getPrefs();
 
         int surfaceW = getMeasuredWidth(), surfaceH = getMeasuredHeight();
         // Views the insets reserve room for are hidden while the dimensions are frozen.
@@ -568,7 +591,7 @@ public class LorieView extends SurfaceView implements InputStub {
         if (hardwareKbdScancodesWorkaround)
             return false;
 
-        return activity.handleKey(event);
+        return activity != null ? activity.handleKey(event) : super.dispatchKeyEventPreIme(event);
     }
 
     @Override
@@ -586,6 +609,9 @@ public class LorieView extends SurfaceView implements InputStub {
     ClipboardManager.OnPrimaryClipChangedListener clipboardListener = this::handleClipboardChange;
 
     public void reloadPreferences(Prefs p) {
+        if (p != null) {
+            this.mPrefs = p;
+        }
         String filtering = p.displayFilteringMode.get();
         setFiltering(mNativeContext, "nearest".equals(filtering) ? GLES20.GL_NEAREST : GLES20.GL_LINEAR);
         setFollowCursorPan(mNativeContext, p.zoomFollowsCursor.get());
@@ -655,7 +681,7 @@ public class LorieView extends SurfaceView implements InputStub {
 
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
-        if (activity.prefs.enforceCharBasedInput.get())
+        if (getPrefs().enforceCharBasedInput.get())
             outAttrs.inputType = InputType.TYPE_NULL;
         else
             outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_TEXT_VARIATION_NORMAL;
@@ -702,7 +728,6 @@ public class LorieView extends SurfaceView implements InputStub {
     @FastNative private native long getCursorPosition(long ptr);
     @FastNative private native void sendSync(long ptr, int serial);
 
-    // Public API stays free of the native pointer; it's threaded through to an overload below.
     public void connect(int fd) { connect(mNativeContext, fd); }
     @FastNative private static native void connect(long ptr, int fd);
 

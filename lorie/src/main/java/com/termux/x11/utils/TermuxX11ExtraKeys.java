@@ -18,8 +18,10 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 
 import com.termux.x11.extrakeys.*;
+import com.termux.x11.LorieApp;
 import com.termux.x11.LoriePreferences;
 import com.termux.x11.MainActivity;
+import com.termux.x11.Prefs;
 
 import org.json.JSONException;
 
@@ -194,6 +196,13 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
             onTerminalExtraKeyButtonClick(view, key, ctrlDown, altDown, shiftDown, metaDown, fnDown);
     }
 
+    private static Prefs createPrefs(Context ctx) {
+        if (ctx == null) return null;
+        Prefs p = new Prefs();
+        p.attach(ctx, android.preference.PreferenceManager.getDefaultSharedPreferences(ctx));
+        return p;
+    }
+
     /**
      * Set the terminal extra keys and style.
      */
@@ -202,19 +211,23 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
         mExtraKeysInfo = null;
 
         try {
-            // The mMap stores the extra key and style string values while loading properties
-            // Check {@link #getExtraKeysInternalPropertyValueFromValue(String)} and
-            // {@link #getExtraKeysStyleInternalPropertyValueFromValue(String)}
-            String extrakeys = mActivity.prefs.extra_keys_config.get();
+            Prefs p = (mActivity != null && mActivity.prefs != null) ? mActivity.prefs :
+                    (mActivity != null && mActivity.getApplication() instanceof LorieApp ? ((LorieApp) mActivity.getApplication()).getPrefs(mActivity) :
+                    createPrefs(mActivity != null ? mActivity : (mExtraKeysView != null ? mExtraKeysView.getContext() : null)));
+            String extrakeys = p != null ? p.extra_keys_config.get() : TermuxX11ExtraKeys.DEFAULT_IVALUE_EXTRA_KEYS;
             mExtraKeysInfo = new ExtraKeysInfo(extrakeys, "extra-keys-style", ExtraKeysConstants.CONTROL_CHARS_ALIASES);
         } catch (JSONException e) {
-            Toast.makeText(mActivity, "Could not load and set the \"extra-keys\" property from the properties file: " + e, Toast.LENGTH_LONG).show();
+            if (mActivity != null) {
+                Toast.makeText(mActivity, "Could not load and set the \"extra-keys\" property from the properties file: " + e, Toast.LENGTH_LONG).show();
+            }
             Log.e(LOG_TAG, "Could not load and set the \"extra-keys\" property from the properties file: ", e);
 
             try {
                 mExtraKeysInfo = new ExtraKeysInfo(TermuxX11ExtraKeys.DEFAULT_IVALUE_EXTRA_KEYS, "default", ExtraKeysConstants.CONTROL_CHARS_ALIASES);
             } catch (JSONException e2) {
-                Toast.makeText(mActivity, "Can't create default extra keys", Toast.LENGTH_LONG).show();
+                if (mActivity != null) {
+                    Toast.makeText(mActivity, "Can't create default extra keys", Toast.LENGTH_LONG).show();
+                }
                 Log.e(LOG_TAG, "Could create default extra keys: ", e);
                 mExtraKeysInfo = null;
             }

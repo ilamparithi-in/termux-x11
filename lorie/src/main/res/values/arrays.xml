@@ -113,4 +113,15 @@
         <item>left</item>
         <item>right</item>
     </string-array>
+
+    <string-array name="lenovoPenActionEntries">
+        <item>Disabled</item>
+        <item>Secondary (Right Click)</item>
+        <item>Tertiary (Middle Click)</item>
+    </string-array>
+    <string-array name="lenovoPenActionValues">
+        <item>disabled</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
 </resources>
