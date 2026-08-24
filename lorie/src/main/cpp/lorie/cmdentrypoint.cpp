@@ -267,6 +267,7 @@ static Bool handleStylusEvent(__unused ClientPtr pClient, void *closure) {
         free(e);
         return TRUE;
     }
+    lorieSetCursorVisible(TRUE);
     ValuatorMask mask;
     valuator_mask_zero(&mask);
     static int buttons_prev = 0;
