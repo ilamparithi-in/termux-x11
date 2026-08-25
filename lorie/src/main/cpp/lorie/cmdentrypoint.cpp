@@ -32,6 +32,34 @@ extern "C" {
 #include <poll.h>
 #include "lorie.h"
 
+static inline ssize_t lorie_read_all(int fd, void* buf, size_t count) {
+    size_t total = 0;
+    while (total < count) {
+        ssize_t n = read(fd, ((char*) buf) + total, count - total);
+        if (n <= 0) {
+            if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+                continue;
+            return total > 0 ? (ssize_t) total : n;
+        }
+        total += n;
+    }
+    return (ssize_t) total;
+}
+
+static inline ssize_t lorie_write_all(int fd, const void* buf, size_t count) {
+    size_t total = 0;
+    while (total < count) {
+        ssize_t n = write(fd, ((const char*) buf) + total, count - total);
+        if (n <= 0) {
+            if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+                continue;
+            return total > 0 ? (ssize_t) total : n;
+        }
+        total += n;
+    }
+    return (ssize_t) total;
+}
+
 #define log(prio, ...) __android_log_print(ANDROID_LOG_ ## prio, "LorieNative", __VA_ARGS__)
 
 static int argc = 0;
@@ -422,14 +450,25 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
                 lorieWakeServer();
                 break;
             case EVENT_CLIPBOARD_SEND: {
-                char *data = (char*) calloc(1, e.clipboardSend.count + 1);
-                read(conn_fd, data, e.clipboardSend.count);
-                data[e.clipboardSend.count] = 0;
+                struct ClipboardPayload {
+                    uint8_t mimeType;
+                    size_t count;
+                    char data[];
+                };
+                auto *p = (ClipboardPayload*) calloc(1, sizeof(ClipboardPayload) + e.clipboardSend.count + 1);
+                p->mimeType = e.clipboardSend.mimeType;
+                p->count = e.clipboardSend.count;
+                if (e.clipboardSend.count > 0) {
+                    lorie_read_all(conn_fd, p->data, e.clipboardSend.count);
+                }
+                p->data[e.clipboardSend.count] = 0;
                 QueueWorkProc(+[](__unused ClientPtr pClient, void *closure) -> Bool {
                     // This must be done only on X server thread.
-                    lorieHandleClipboardData((const char*) closure);
+                    auto *p = (ClipboardPayload*) closure;
+                    lorieHandleClipboardData(p->mimeType, p->data, p->count);
+                    free(p);
                     return TRUE;
-                }, nullptr, data);
+                }, nullptr, p);
                 lorieWakeServer();
                 break;
             }
@@ -481,26 +520,27 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
     }
 }
 
-void lorieSendClipboardData(const char* data) {
-    if (data && conn_fd != -1) {
-        size_t len = strlen(data);
-        lorieEvent e = { .clipboardSend = { .t = EVENT_CLIPBOARD_SEND, .count = (uint32_t) len } };
-        write(conn_fd, &e, sizeof(e));
-        write(conn_fd, data, len);
+void lorieSendClipboardData(const char* data, size_t len, uint8_t mimeType) {
+    if (conn_fd != -1) {
+        lorieEvent e = { .clipboardSend = { .t = EVENT_CLIPBOARD_SEND, .mimeType = mimeType, .count = (uint32_t) len } };
+        lorie_write_all(conn_fd, &e, sizeof(e));
+        if (data && len > 0) {
+            lorie_write_all(conn_fd, data, len);
+        }
     }
 }
 
 void lorieSendSyncReply(uint32_t serial) {
     if (conn_fd != -1) {
         lorieEvent e = { .sync = { .t = EVENT_SYNC_REPLY, .serial = serial } };
-        write(conn_fd, &e, sizeof(e));
+        lorie_write_all(conn_fd, &e, sizeof(e));
     }
 }
 
-void lorieRequestClipboard(void) {
+void lorieRequestClipboard(uint8_t targetType) {
     if (conn_fd != -1) {
-        lorieEvent e = { .type = EVENT_CLIPBOARD_REQUEST };
-        write(conn_fd, &e, sizeof(e));
+        lorieEvent e = { .clipboardRequest = { .t = EVENT_CLIPBOARD_REQUEST, .targetType = targetType } };
+        lorie_write_all(conn_fd, &e, sizeof(e));
     }
 }
 

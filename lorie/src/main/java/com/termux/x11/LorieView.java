@@ -5,6 +5,8 @@ import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Point;
@@ -12,6 +14,7 @@ import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.ColorDrawable;
+import android.net.Uri;
 import android.opengl.GLES20;
 import android.os.Build;
 import android.os.Handler;
@@ -37,11 +40,16 @@ import android.view.inputmethod.SurroundingText;
 
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
+import androidx.core.content.FileProvider;
 import androidx.core.math.MathUtils;
 
 import com.termux.x11.input.InputStub;
 import com.termux.x11.utils.SamsungDexUtils;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.Set;
 import java.util.regex.PatternSyntaxException;
 
@@ -61,7 +69,9 @@ public class LorieView extends SurfaceView implements InputStub {
     }
 
     private ClipboardManager clipboard;
-    private long lastClipboardTimestamp = System.currentTimeMillis();
+    private long lastClipboardTimestamp = 0;
+    private boolean isUpdatingFromX11 = false;
+    private boolean keyboardVisible = false;
     private long mNativeContext;
     private boolean clipboardSyncEnabled = false;
     private boolean hardwareKbdScancodesWorkaround = false;
@@ -600,31 +610,137 @@ public class LorieView extends SurfaceView implements InputStub {
         hardwareKbdScancodesWorkaround = p.hardwareKbdScancodesWorkaround.get();
         clipboardSyncEnabled = p.clipboardEnable.get();
         setClipboardSyncEnabled(mNativeContext, clipboardSyncEnabled, clipboardSyncEnabled);
-        activity.mInputHandler.refreshInputDevices();
+        if (clipboardSyncEnabled) {
+            checkForClipboardChange();
+        }
+        if (activity != null && activity.mInputHandler != null) {
+            activity.mInputHandler.refreshInputDevices();
+        } else {
+            TouchInputHandler.refreshInputDevices();
+        }
     }
 
     // It is used in native code
     void setClipboardText(String text) {
-        clipboard.setPrimaryClip(ClipData.newPlainText("X11 clipboard", text));
+        if (clipboard == null || text == null) return;
+        try {
+            isUpdatingFromX11 = true;
+            clipboard.setPrimaryClip(ClipData.newPlainText("X11 clipboard", text));
+            ClipDescription desc = clipboard.getPrimaryClipDescription();
+            lastClipboardTimestamp = desc != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? desc.getTimestamp() : System.currentTimeMillis() + 150;
+        } catch (Exception e) {
+            Log.w("CLIP", "Failed to set clipboard text", e);
+        } finally {
+            isUpdatingFromX11 = false;
+        }
+    }
 
-        // Android does not send PrimaryClipChanged event to the window which posted event
-        // But in the case we are owning focus and clipboard is unchanged it will be replaced by the same value on X server side.
-        // Not cool in the case if user installed some clipboard manager, clipboard content will be doubled.
-        lastClipboardTimestamp = System.currentTimeMillis() + 150;
+    // It is used in native code
+    void setClipboardImage(byte[] imageBytes, String mimeType) {
+        if (clipboard == null || imageBytes == null || imageBytes.length == 0) return;
+        try {
+            File clipDir = new File(getContext().getCacheDir(), "clipboard");
+            if (!clipDir.exists()) clipDir.mkdirs();
+            String ext = "image/jpeg".equals(mimeType) ? ".jpg" : ".png";
+            File imageFile = new File(clipDir, "clipboard_image" + ext);
+            try (FileOutputStream fos = new FileOutputStream(imageFile)) {
+                fos.write(imageBytes);
+            }
+            Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", imageFile);
+            ClipData clip = ClipData.newUri(getContext().getContentResolver(), "X11 Image", uri);
+            isUpdatingFromX11 = true;
+            clipboard.setPrimaryClip(clip);
+            ClipDescription desc = clipboard.getPrimaryClipDescription();
+            lastClipboardTimestamp = desc != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? desc.getTimestamp() : System.currentTimeMillis() + 150;
+            Log.d("CLIP", "Successfully synced X11 image (" + imageBytes.length + " bytes) to Android clipboard");
+        } catch (Exception e) {
+            Log.w("CLIP", "Failed to set clipboard image", e);
+        } finally {
+            isUpdatingFromX11 = false;
+        }
+    }
+
+    // It is used in native code
+    void setClipboardHtml(byte[] htmlBytes) {
+        if (clipboard == null || htmlBytes == null || htmlBytes.length == 0) return;
+        try {
+            String html = new String(htmlBytes, UTF_8);
+            ClipData clip = ClipData.newHtmlText("X11 HTML", html, html);
+            isUpdatingFromX11 = true;
+            clipboard.setPrimaryClip(clip);
+            ClipDescription desc = clipboard.getPrimaryClipDescription();
+            lastClipboardTimestamp = desc != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? desc.getTimestamp() : System.currentTimeMillis() + 150;
+            Log.d("CLIP", "Successfully synced X11 HTML to Android clipboard");
+        } catch (Exception e) {
+            Log.w("CLIP", "Failed to set clipboard HTML", e);
+        } finally {
+            isUpdatingFromX11 = false;
+        }
     }
 
     /** @noinspection unused*/ // It is used in native code
-    void requestClipboard() {
-        ClipDescription desc = clipboardSyncEnabled ? clipboard.getPrimaryClipDescription() : null;
-        boolean isText = desc != null && (desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) || desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML));
-        CharSequence clip = isText ? clipboard.getText() : null;
-        String text = clip != null ? clip.toString() : "";
+    void requestClipboard(int targetType) {
+        byte[] payload = new byte[0];
+        if (clipboardSyncEnabled && clipboard != null) {
+            try {
+                ClipData clipData = clipboard.getPrimaryClip();
+                if (clipData != null && clipData.getItemCount() > 0) {
+                    ClipData.Item item = clipData.getItemAt(0);
+                    if (targetType == 1) { // LORIE_CLIPBOARD_IMAGE_PNG
+                        Uri uri = item.getUri();
+                        if (uri != null) {
+                            try (InputStream is = getContext().getContentResolver().openInputStream(uri)) {
+                                if (is != null) {
+                                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                                    byte[] buf = new byte[16384];
+                                    int n;
+                                    while ((n = is.read(buf)) != -1) {
+                                        baos.write(buf, 0, n);
+                                    }
+                                    byte[] raw = baos.toByteArray();
+                                    // If raw data starts with PNG header (\x89PNG), use directly
+                                    if (raw.length >= 8 && raw[0] == (byte) 0x89 && raw[1] == (byte) 0x50 && raw[2] == (byte) 0x4E && raw[3] == (byte) 0x47) {
+                                        payload = raw;
+                                    } else {
+                                        Bitmap bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.length);
+                                        if (bitmap != null) {
+                                            ByteArrayOutputStream pngOut = new ByteArrayOutputStream();
+                                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, pngOut);
+                                            payload = pngOut.toByteArray();
+                                            bitmap.recycle();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (targetType == 2) { // LORIE_CLIPBOARD_HTML
+                        String html = item.getHtmlText();
+                        if (html != null) {
+                            payload = html.getBytes(UTF_8);
+                        } else {
+                            CharSequence text = item.getText();
+                            if (text != null) payload = text.toString().getBytes(UTF_8);
+                        }
+                    } else { // LORIE_CLIPBOARD_TEXT
+                        CharSequence itemText = item.getText();
+                        if (itemText == null && item.getHtmlText() != null) {
+                            itemText = item.getHtmlText();
+                        }
+                        if (itemText != null) {
+                            payload = itemText.toString().getBytes(UTF_8);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.w("CLIP", "Failed to retrieve primary clip (targetType=" + targetType + ")", e);
+            }
+        }
 
         // A requesting X11 client blocks on a SelectionNotify, so this must always answer, even
-        // with an empty string, or the request is left unresolved.
-        sendClipboardEvent(mNativeContext, text.getBytes(UTF_8));
-        if (!text.isEmpty())
-            Log.d("CLIP", "sending clipboard contents: " + text);
+        // with an empty payload, or the request is left unresolved.
+        sendClipboardEvent(mNativeContext, payload, targetType);
+        if (payload.length > 0)
+            Log.d("CLIP", "sending clipboard contents: " + payload.length + " bytes (targetType=" + targetType + ")");
     }
 
     public void handleClipboardChange() {
@@ -632,17 +748,38 @@ public class LorieView extends SurfaceView implements InputStub {
     }
 
     public void checkForClipboardChange() {
-        ClipDescription desc = clipboard.getPrimaryClipDescription();
-        // Below API 26 the clipboard carries no timestamp, so every change looks like a new one.
-        long timestamp = desc == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O ? lastClipboardTimestamp + 1 : desc.getTimestamp();
-        if (clipboardSyncEnabled && desc != null &&
-                lastClipboardTimestamp < timestamp &&
-                desc.getMimeTypeCount() == 1 &&
-                (desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
-                        desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML))) {
-            lastClipboardTimestamp = timestamp;
+        if (!clipboardSyncEnabled || clipboard == null || isUpdatingFromX11) return;
+        try {
+            ClipDescription desc = clipboard.getPrimaryClipDescription();
+            if (desc == null) return;
+            long timestamp = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ? lastClipboardTimestamp + 1 : desc.getTimestamp();
+            if (lastClipboardTimestamp < timestamp &&
+                    (desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
+                     desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML) ||
+                     desc.hasMimeType("text/*") ||
+                     desc.hasMimeType("image/png") ||
+                     desc.hasMimeType("image/jpeg") ||
+                     desc.hasMimeType("image/*"))) {
+                lastClipboardTimestamp = timestamp;
+                sendClipboardAnnounce(mNativeContext);
+                Log.d("CLIP", "sending clipboard announce");
+            }
+        } catch (Exception e) {
+            Log.w("CLIP", "Error in checkForClipboardChange", e);
+        }
+    }
+
+    public void forceAnnounceClipboard() {
+        if (!clipboardSyncEnabled || clipboard == null) return;
+        try {
+            ClipDescription desc = clipboard.getPrimaryClipDescription();
+            if (desc != null) {
+                lastClipboardTimestamp = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? desc.getTimestamp() : System.currentTimeMillis();
+            }
             sendClipboardAnnounce(mNativeContext);
-            Log.d("CLIP", "sending clipboard announce");
+            Log.d("CLIP", "Force announced clipboard to X11");
+        } catch (Exception e) {
+            Log.w("CLIP", "Error in forceAnnounceClipboard", e);
         }
     }
 
@@ -700,7 +837,7 @@ public class LorieView extends SurfaceView implements InputStub {
     @FastNative private native void setFiltering(long ptr, int filtering);
     @FastNative private native void setClipboardSyncEnabled(long ptr, boolean enabled, boolean ignored);
     @FastNative private native void sendClipboardAnnounce(long ptr);
-    @FastNative private native void sendClipboardEvent(long ptr, byte[] text);
+    @FastNative private native void sendClipboardEvent(long ptr, byte[] data, int targetType);
     @FastNative private native void sendWindowChange(long ptr, int width, int height, int framerate, String name);
     @FastNative private native void setViewport(long ptr, int x, int y, int width, int height, int expectedWidth, int expectedHeight, int hiddenBottom);
     @FastNative private native void setRendererZoom(long ptr, int percent);

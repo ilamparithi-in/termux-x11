@@ -20,9 +20,37 @@
 #pragma clang diagnostic ignored "-Wunknown-pragmas"
 #pragma ide diagnostic ignored "cppcoreguidelines-narrowing-conversions"
 #pragma ide diagnostic ignored "ConstantFunctionResult"
+static inline ssize_t lorie_read_all(int fd, void* buf, size_t count) {
+    size_t total = 0;
+    while (total < count) {
+        ssize_t n = read(fd, ((char*) buf) + total, count - total);
+        if (n <= 0) {
+            if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+                continue;
+            return total > 0 ? (ssize_t) total : n;
+        }
+        total += n;
+    }
+    return (ssize_t) total;
+}
+
+static inline ssize_t lorie_write_all(int fd, const void* buf, size_t count) {
+    size_t total = 0;
+    while (total < count) {
+        ssize_t n = write(fd, ((const char*) buf) + total, count - total);
+        if (n <= 0) {
+            if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+                continue;
+            return total > 0 ? (ssize_t) total : n;
+        }
+        total += n;
+    }
+    return (ssize_t) total;
+}
+
 #define log(prio, ...) __android_log_print(ANDROID_LOG_ ## prio, "LorieNative", __VA_ARGS__)
 // `r` must be a LorieViewResources* — the connection fd is per-instance state, not a process global.
-#define sendEvent(r, ...) do { if ((r) && (r)->connFd != -1) { lorieEvent e = { __VA_ARGS__ }; write((r)->connFd, &e, sizeof(e)); } } while (0)
+#define sendEvent(r, ...) do { if ((r) && (r)->connFd != -1) { lorieEvent e = { __VA_ARGS__ }; lorie_write_all((r)->connFd, &e, sizeof(e)); } } while (0)
 
 bool lorieDebugEnabled = false;
 
@@ -213,23 +241,49 @@ int LorieViewResources::xcallback(int fd, int events) {
                 case EVENT_CLIPBOARD_SEND: {
                     if (!e.clipboardSend.count)
                         break;
-                    char clipboard[e.clipboardSend.count + 1];
-                    memset(clipboard, 0, e.clipboardSend.count + 1);
-                    read(connFd, clipboard, sizeof(clipboard));
+                    char* clipboard = (char*) malloc(e.clipboardSend.count + 1);
+                    if (!clipboard) break;
+                    if (e.clipboardSend.count > 0) {
+                        lorie_read_all(connFd, clipboard, e.clipboardSend.count);
+                    }
                     clipboard[e.clipboardSend.count] = 0;
-                    log(DEBUG, "Clipboard content (%zu symbols) is %s", strlen(clipboard), clipboard);
-                    jmethodID id = env->GetMethodID(env->GetObjectClass(thiz), "setClipboardText","(Ljava/lang/String;)V");
-                    jobject bb = env->NewDirectByteBuffer(clipboard, strlen(clipboard));
-                    jobject charset = env->CallStaticObjectMethod(Charset.self, Charset.forName, env->NewStringUTF("UTF-8"));
-                    jobject cb = env->CallObjectMethod(charset, Charset.decode, bb);
-                    env->DeleteLocalRef(bb);
+                    if (e.clipboardSend.mimeType == LORIE_CLIPBOARD_IMAGE_PNG) {
+                        jbyteArray byteArr = env->NewByteArray(e.clipboardSend.count);
+                        env->SetByteArrayRegion(byteArr, 0, e.clipboardSend.count, (const jbyte*) clipboard);
+                        jstring mime = env->NewStringUTF("image/png");
+                        jmethodID id = env->GetMethodID(env->GetObjectClass(thiz), "setClipboardImage", "([BLjava/lang/String;)V");
+                        if (id) {
+                            env->CallVoidMethod(thiz, id, byteArr, mime);
+                        }
+                        env->DeleteLocalRef(mime);
+                        env->DeleteLocalRef(byteArr);
+                    } else if (e.clipboardSend.mimeType == LORIE_CLIPBOARD_HTML) {
+                        jbyteArray byteArr = env->NewByteArray(e.clipboardSend.count);
+                        env->SetByteArrayRegion(byteArr, 0, e.clipboardSend.count, (const jbyte*) clipboard);
+                        jmethodID id = env->GetMethodID(env->GetObjectClass(thiz), "setClipboardHtml", "([B)V");
+                        if (id) {
+                            env->CallVoidMethod(thiz, id, byteArr);
+                        }
+                        env->DeleteLocalRef(byteArr);
+                    } else {
+                        log(DEBUG, "Clipboard text content (%u symbols)", e.clipboardSend.count);
+                        jmethodID id = env->GetMethodID(env->GetObjectClass(thiz), "setClipboardText", "(Ljava/lang/String;)V");
+                        jobject bb = env->NewDirectByteBuffer(clipboard, e.clipboardSend.count);
+                        jobject charset = env->CallStaticObjectMethod(Charset.self, Charset.forName, env->NewStringUTF("UTF-8"));
+                        jobject cb = env->CallObjectMethod(charset, Charset.decode, bb);
+                        env->DeleteLocalRef(bb);
 
-                    auto str = (jstring) env->CallObjectMethod(cb, CharBuffer.toString);
-                    env->CallVoidMethod(thiz, id, str);
+                        auto str = (jstring) env->CallObjectMethod(cb, CharBuffer.toString);
+                        env->CallVoidMethod(thiz, id, str);
+                    }
+                    free(clipboard);
                     break;
                 }
                 case EVENT_CLIPBOARD_REQUEST: {
-                    env->CallVoidMethod(thiz, env->GetMethodID(env->GetObjectClass(thiz), "requestClipboard", "()V"));
+                    jmethodID id = env->GetMethodID(env->GetObjectClass(thiz), "requestClipboard", "(I)V");
+                    if (id) {
+                        env->CallVoidMethod(thiz, id, (jint) e.clipboardRequest.targetType);
+                    }
                     break;
                 }
                 case EVENT_SHARED_SERVER_STATE: {
@@ -455,14 +509,16 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, __unused void *reserved) {
                 auto* r = (LorieViewResources*) ptr;
                 sendEvent(r, .type = EVENT_CLIPBOARD_ANNOUNCE);
             }},
-            {"sendClipboardEvent", "(J[B)V", (void *) +[](JNIEnv *env, __unused jobject thiz, jlong ptr, jbyteArray text) {
+            {"sendClipboardEvent", "(J[BI)V", (void *) +[](JNIEnv *env, __unused jobject thiz, jlong ptr, jbyteArray text, jint targetType) {
                 auto* r = (LorieViewResources*) ptr;
-                if (r && r->connFd != -1 && text) {
-                    jsize length = env->GetArrayLength(text);
-                    jbyte* str = env->GetByteArrayElements(text, nullptr);
-                    sendEvent(r, .clipboardSend = { .t = EVENT_CLIPBOARD_SEND, .count = (uint32_t) length });
-                    write(r->connFd, str, length);
-                    env->ReleaseByteArrayElements(text, str, JNI_ABORT);
+                if (r && r->connFd != -1) {
+                    jsize length = text ? env->GetArrayLength(text) : 0;
+                    sendEvent(r, .clipboardSend = { .t = EVENT_CLIPBOARD_SEND, .mimeType = (uint8_t) targetType, .count = (uint32_t) length });
+                    if (length > 0 && text) {
+                        jbyte* str = env->GetByteArrayElements(text, nullptr);
+                        lorie_write_all(r->connFd, str, length);
+                        env->ReleaseByteArrayElements(text, str, JNI_ABORT);
+                    }
                 }
             }},
             {"sendWindowChange", "(JIIILjava/lang/String;)V", (void *) +[](__unused JNIEnv* env, __unused jobject cls, jlong ptr, jint width, jint height, jint framerate, jstring jname) {

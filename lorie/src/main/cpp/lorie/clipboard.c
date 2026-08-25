@@ -187,8 +187,18 @@ extern ScreenPtr pScreenPtr;
 static int (*origProcSendEvent)(ClientPtr) = NULL;
 static int (*origProcConvertSelection)(ClientPtr) = NULL;
 static Atom xaTIMESTAMP = 0, xaTEXT = 0, xaCLIPBOARD = 0, xaTARGETS = 0, xaSTRING = 0, xaUTF8_STRING = 0;
+static Atom xaPNG = 0, xaPNG_UPPER = 0, xaJPEG = 0, xaIMAGE_JPG = 0, xaJPEG_UPPER = 0, xaBMP = 0, xaHTML = 0, xaHTML_UTF8 = 0;
 static Bool clipboardEnabled = FALSE;
-static const char* cachedData = NULL;
+
+static struct {
+    char* text;
+    size_t textSize;
+    char* image;
+    size_t imageSize;
+    char* html;
+    size_t htmlSize;
+    uint8_t fetchedMask; // bit 0 = text, bit 1 = image, bit 2 = html
+} clipCache = {NULL, 0, NULL, 0, NULL, 0, 0};
 
 struct LorieDataTarget {
     ClientPtr client;
@@ -232,7 +242,9 @@ static Bool lorieHasAtom(Atom atom, const Atom list[], size_t size) {
 
 static void lorieHandleSelection(Atom target) {
     PropertyPtr prop;
-    if (target != xaTARGETS && target != xaSTRING && target != xaUTF8_STRING)
+    if (target != xaTARGETS && target != xaSTRING && target != xaUTF8_STRING &&
+        target != xaPNG && target != xaPNG_UPPER && target != xaJPEG && target != xaIMAGE_JPG &&
+        target != xaJPEG_UPPER && target != xaBMP && target != xaHTML && target != xaHTML_UTF8)
         return;
 
     if (dixLookupProperty(&prop, pScreenPtr->root, target, serverClient, DixReadAccess) != Success)
@@ -241,14 +253,32 @@ static void lorieHandleSelection(Atom target) {
     log(DEBUG, "Selection notification for CLIPBOARD (target %s, type %s)\n", NameForAtom(target), NameForAtom(prop->type));
 
     if (target == xaTARGETS && prop->type == XA_ATOM && prop->format == 32) {
-        if (lorieHasAtom(xaUTF8_STRING, (const Atom*)prop->data, prop->size))
+        if (lorieHasAtom(xaPNG, (const Atom*)prop->data, prop->size))
+            lorieSelectionRequest(xaCLIPBOARD, xaPNG);
+        else if (lorieHasAtom(xaPNG_UPPER, (const Atom*)prop->data, prop->size))
+            lorieSelectionRequest(xaCLIPBOARD, xaPNG_UPPER);
+        else if (lorieHasAtom(xaJPEG, (const Atom*)prop->data, prop->size))
+            lorieSelectionRequest(xaCLIPBOARD, xaJPEG);
+        else if (lorieHasAtom(xaIMAGE_JPG, (const Atom*)prop->data, prop->size))
+            lorieSelectionRequest(xaCLIPBOARD, xaIMAGE_JPG);
+        else if (lorieHasAtom(xaJPEG_UPPER, (const Atom*)prop->data, prop->size))
+            lorieSelectionRequest(xaCLIPBOARD, xaJPEG_UPPER);
+        else if (lorieHasAtom(xaBMP, (const Atom*)prop->data, prop->size))
+            lorieSelectionRequest(xaCLIPBOARD, xaBMP);
+        else if (lorieHasAtom(xaUTF8_STRING, (const Atom*)prop->data, prop->size))
             lorieSelectionRequest(xaCLIPBOARD, xaUTF8_STRING);
         else if (lorieHasAtom(xaSTRING, (const Atom*)prop->data, prop->size))
             lorieSelectionRequest(xaCLIPBOARD, xaSTRING);
+        else if (lorieHasAtom(xaHTML, (const Atom*)prop->data, prop->size))
+            lorieSelectionRequest(xaCLIPBOARD, xaHTML);
+    } else if (target == xaPNG || target == xaPNG_UPPER || target == xaJPEG ||
+               target == xaIMAGE_JPG || target == xaJPEG_UPPER || target == xaBMP) {
+        log(DEBUG, "Sending clipboard image to Android (%zu bytes)\n", (size_t) prop->size);
+        lorieSendClipboardData((const char*) prop->data, prop->size, LORIE_CLIPBOARD_IMAGE_PNG);
+    } else if (target == xaHTML || target == xaHTML_UTF8) {
+        log(DEBUG, "Sending clipboard HTML to Android (%zu bytes)\n", (size_t) prop->size);
+        lorieSendClipboardData((const char*) prop->data, prop->size, LORIE_CLIPBOARD_HTML);
     } else if (target == xaSTRING && prop->type == xaSTRING && prop->format == 8) {
-        if (prop->format != 8 || prop->type != xaSTRING)
-            return;
-
         char filtered[prop->size + 1], utf8[(prop->size + 1) * 2];
         memset(filtered, 0, sizeof(filtered));
         memset(utf8, 0, sizeof(utf8));
@@ -256,7 +286,7 @@ static void lorieHandleSelection(Atom target) {
         lorieConvertLF(prop->data,  filtered, prop->size);
         lorieLatin1ToUTF8((unsigned char*) utf8, (unsigned char*) filtered);
         log(DEBUG, "Sending clipboard to clients (%zu bytes)\n", strlen(utf8));
-        lorieSendClipboardData(utf8);
+        lorieSendClipboardData(utf8, strlen(utf8), LORIE_CLIPBOARD_TEXT);
     } else if (target == xaUTF8_STRING && prop->type == xaUTF8_STRING && prop->format == 8) {
         char filtered[prop->size + 1];
 
@@ -269,7 +299,7 @@ static void lorieHandleSelection(Atom target) {
         lorieConvertLF(prop->data, filtered, prop->size);
 
         log(DEBUG, "Sending clipboard to clients (%zu bytes)\n", strlen(filtered));
-        lorieSendClipboardData(filtered);
+        lorieSendClipboardData(filtered, strlen(filtered), LORIE_CLIPBOARD_TEXT);
     }
 }
 
@@ -296,7 +326,7 @@ static void lorieSelectionCallback(__unused CallbackListPtr *callbacks, __unused
 
 /* functions related to clipboard announcing and sending */
 
-static int lorieConvertSelection(ClientPtr client, Atom selection, Atom target, Atom property, Window requestor, CARD32 time, const char* data) {
+static int lorieConvertSelection(ClientPtr client, Atom selection, Atom target, Atom property, Window requestor, CARD32 time) {
     Selection *pSel;
     WindowPtr pWin;
     int rc;
@@ -305,35 +335,21 @@ static int lorieConvertSelection(ClientPtr client, Atom selection, Atom target, 
 
     xEvent event;
 
-    if (data == NULL) {
-        log(DEBUG, "Selection request for %s (type %s)",
-            NameForAtom(selection), NameForAtom(target));
-    } else {
-        log(DEBUG, "Sending data for selection request for %s (type %s)",
-            NameForAtom(selection), NameForAtom(target));
-    }
-
     rc = dixLookupSelection(&pSel, selection, client, DixGetAttrAccess);
     if (rc != Success)
         return rc;
-
-    /* We do not validate the time argument because neither does
-     * dix/selection.c and some clients (e.g. Qt) relies on this */
 
     rc = dixLookupWindow(&pWin, requestor, client, DixSetAttrAccess);
     if (rc != Success)
         return rc;
 
-    if (property != None)
-        realProperty = property;
-    else
-        realProperty = target;
-
-    /* FIXME: MULTIPLE target */
+    realProperty = (property != None) ? property : target;
 
     if (target == xaTARGETS) {
         Atom targets[] = { xaTARGETS, xaTIMESTAMP,
-                           xaSTRING, xaTEXT, xaUTF8_STRING };
+                           xaUTF8_STRING, xaSTRING, xaTEXT,
+                           xaHTML, xaHTML_UTF8,
+                           xaPNG, xaPNG_UPPER, xaJPEG, xaIMAGE_JPG, xaJPEG_UPPER, xaBMP };
 
         rc = dixChangeWindowProperty(serverClient, pWin, realProperty,
                                      XA_ATOM, 32, PropModeReplace,
@@ -349,14 +365,17 @@ static int lorieConvertSelection(ClientPtr client, Atom selection, Atom target, 
         if (rc != Success)
             return rc;
     } else {
-        if (data == NULL) {
-            struct LorieDataTarget* ldt;
+        uint8_t reqType = LORIE_CLIPBOARD_TEXT;
+        if (target == xaPNG || target == xaPNG_UPPER || target == xaJPEG ||
+            target == xaIMAGE_JPG || target == xaJPEG_UPPER || target == xaBMP)
+            reqType = LORIE_CLIPBOARD_IMAGE_PNG;
+        else if (target == xaHTML || target == xaHTML_UTF8)
+            reqType = LORIE_CLIPBOARD_HTML;
+        else if (target != xaUTF8_STRING && target != xaSTRING && target != xaTEXT)
+            return BadMatch;
 
-            if ((target != xaSTRING) && (target != xaTEXT) &&
-                (target != xaUTF8_STRING))
-                return BadMatch;
-
-            ldt = calloc(1, sizeof(struct LorieDataTarget));
+        if (!(clipCache.fetchedMask & (1 << reqType))) {
+            struct LorieDataTarget* ldt = calloc(1, sizeof(struct LorieDataTarget));
             if (ldt == NULL)
                 return BadAlloc;
 
@@ -370,30 +389,52 @@ static int lorieConvertSelection(ClientPtr client, Atom selection, Atom target, 
             ldt->next = lorieDataTargetHead;
             lorieDataTargetHead = ldt;
 
-            log(DEBUG, "Requesting clipboard data from client");
-            lorieRequestClipboard();
+            log(DEBUG, "Requesting clipboard data from Android (targetType=%d)", (int) reqType);
+            lorieRequestClipboard(reqType);
 
             return Success;
-        } else {
-            if ((target == xaSTRING) || (target == xaTEXT)) {
-                const char* latin1 = lorieUtf8ToLatin1(data);
-                if (latin1 == NULL)
-                    return BadAlloc;
+        }
 
+        if (reqType == LORIE_CLIPBOARD_IMAGE_PNG) {
+            if (clipCache.image && clipCache.imageSize > 0) {
                 rc = dixChangeWindowProperty(serverClient, pWin, realProperty,
-                                             XA_STRING, 8, PropModeReplace,
-                                             strlen(latin1), latin1, TRUE);
-
-                free((void*) latin1);
-
+                                             target, 8, PropModeReplace,
+                                             clipCache.imageSize, clipCache.image, TRUE);
                 if (rc != Success)
                     return rc;
-            } else if (target == xaUTF8_STRING) {
+            } else {
+                return BadMatch;
+            }
+        } else if (reqType == LORIE_CLIPBOARD_HTML) {
+            if (clipCache.html && clipCache.htmlSize > 0) {
                 rc = dixChangeWindowProperty(serverClient, pWin, realProperty,
-                                             xaUTF8_STRING, 8, PropModeReplace,
-                                             strlen(data), data, TRUE);
+                                             target, 8, PropModeReplace,
+                                             clipCache.htmlSize, clipCache.html, TRUE);
                 if (rc != Success)
                     return rc;
+            } else {
+                return BadMatch;
+            }
+        } else { // TEXT
+            if (clipCache.text && clipCache.textSize > 0) {
+                if (target == xaUTF8_STRING) {
+                    rc = dixChangeWindowProperty(serverClient, pWin, realProperty,
+                                                 xaUTF8_STRING, 8, PropModeReplace,
+                                                 clipCache.textSize, clipCache.text, TRUE);
+                    if (rc != Success)
+                        return rc;
+                } else {
+                    const char* latin1 = lorieUtf8ToLatin1(clipCache.text);
+                    if (latin1 == NULL)
+                        return BadAlloc;
+
+                    rc = dixChangeWindowProperty(serverClient, pWin, realProperty,
+                                                 XA_STRING, 8, PropModeReplace,
+                                                 strlen(latin1), latin1, TRUE);
+                    free((void*) latin1);
+                    if (rc != Success)
+                        return rc;
+                }
             } else {
                 return BadMatch;
             }
@@ -405,7 +446,7 @@ static int lorieConvertSelection(ClientPtr client, Atom selection, Atom target, 
     event.u.selectionNotify.requestor = requestor;
     event.u.selectionNotify.selection = selection;
     event.u.selectionNotify.target = target;
-    event.u.selectionNotify.property = property;
+    event.u.selectionNotify.property = realProperty;
     WriteEventsToClient(client, 1, &event);
     return Success;
 }
@@ -433,12 +474,9 @@ static int lorieProcConvertSelection(ClientPtr client) {
     /* Do we own this selection? */
     rc = dixLookupSelection(&pSel, stuff->selection, client, DixReadAccess);
     if (rc == Success && pSel->client == serverClient && pSel->window == pScreenPtr->root->drawable.id) {
-        /* cachedData will be NULL for the first request, but can then be
-         * reused once we've gotten the data once from the client */
         rc = lorieConvertSelection(client, stuff->selection,
                                    stuff->target, stuff->property,
-                                   stuff->requestor, stuff->time,
-                                   cachedData);
+                                   stuff->requestor, stuff->time);
         if (rc != Success) {
             xEvent event;
 
@@ -510,9 +548,10 @@ static int lorieOwnSelection(Atom selection) {
 }
 
 void lorieHandleClipboardAnnounce(void) {
-    // The data has changed in some way, so whatever is in our cache is now stale
-    free((void*) cachedData);
-    cachedData = NULL;
+    free(clipCache.text);
+    free(clipCache.image);
+    free(clipCache.html);
+    memset(&clipCache, 0, sizeof(clipCache));
 
     int rc;
 
@@ -523,38 +562,69 @@ void lorieHandleClipboardAnnounce(void) {
         log(ERROR, "Could not set CLIPBOARD selection");
 }
 
-void lorieHandleClipboardData(const char* data) {
-    struct LorieDataTarget* next;
+void lorieHandleClipboardData(uint8_t mimeType, const char* data, size_t len) {
+    log(DEBUG, "Got remote clipboard data (%zu bytes, mimeType=%u), sending to X11 clients", len, (unsigned int) mimeType);
 
-    log(DEBUG, "Got remote clipboard data, sending to X11 clients");
+    clipCache.fetchedMask |= (1 << mimeType);
 
-    free((void*) cachedData);
-    cachedData = data;
-
-    while (lorieDataTargetHead != NULL) {
-        int rc;
-        xEvent event;
-
-        rc = lorieConvertSelection(lorieDataTargetHead->client,
-                                   lorieDataTargetHead->selection,
-                                   lorieDataTargetHead->target,
-                                   lorieDataTargetHead->property,
-                                   lorieDataTargetHead->requestor,
-                                   lorieDataTargetHead->time,
-                                 cachedData);
-        if (rc != Success) {
-            event.u.u.type = SelectionNotify;
-            event.u.selectionNotify.time = lorieDataTargetHead->time;
-            event.u.selectionNotify.requestor = lorieDataTargetHead->requestor;
-            event.u.selectionNotify.selection = lorieDataTargetHead->selection;
-            event.u.selectionNotify.target = lorieDataTargetHead->target;
-            event.u.selectionNotify.property = None;
-            WriteEventsToClient(lorieDataTargetHead->client, 1, &event);
+    if (mimeType == LORIE_CLIPBOARD_IMAGE_PNG) {
+        free(clipCache.image);
+        clipCache.image = NULL;
+        clipCache.imageSize = len;
+        if (data && len > 0) {
+            clipCache.image = (char*) malloc(len);
+            if (clipCache.image) memcpy(clipCache.image, data, len);
         }
+    } else if (mimeType == LORIE_CLIPBOARD_HTML) {
+        free(clipCache.html);
+        clipCache.html = NULL;
+        clipCache.htmlSize = len;
+        if (data && len > 0) {
+            clipCache.html = (char*) malloc(len + 1);
+            if (clipCache.html) {
+                memcpy(clipCache.html, data, len);
+                clipCache.html[len] = 0;
+            }
+        }
+    } else { // TEXT
+        free(clipCache.text);
+        clipCache.text = NULL;
+        clipCache.textSize = len;
+        if (data && len > 0) {
+            clipCache.text = (char*) malloc(len + 1);
+            if (clipCache.text) {
+                memcpy(clipCache.text, data, len);
+                clipCache.text[len] = 0;
+            }
+        }
+    }
 
-        next = lorieDataTargetHead->next;
-        free(lorieDataTargetHead);
-        lorieDataTargetHead = next;
+    struct LorieDataTarget** curr = &lorieDataTargetHead;
+    while (*curr != NULL) {
+        struct LorieDataTarget* ldt = *curr;
+        uint8_t reqType = LORIE_CLIPBOARD_TEXT;
+        if (ldt->target == xaPNG || ldt->target == xaJPEG)
+            reqType = LORIE_CLIPBOARD_IMAGE_PNG;
+        else if (ldt->target == xaHTML || ldt->target == xaHTML_UTF8)
+            reqType = LORIE_CLIPBOARD_HTML;
+
+        if (reqType == mimeType) {
+            *curr = ldt->next;
+            int rc = lorieConvertSelection(ldt->client, ldt->selection, ldt->target, ldt->property, ldt->requestor, ldt->time);
+            if (rc != Success) {
+                xEvent event = {0};
+                event.u.u.type = SelectionNotify;
+                event.u.selectionNotify.time = ldt->time;
+                event.u.selectionNotify.requestor = ldt->requestor;
+                event.u.selectionNotify.selection = ldt->selection;
+                event.u.selectionNotify.target = ldt->target;
+                event.u.selectionNotify.property = None;
+                WriteEventsToClient(ldt->client, 1, &event);
+            }
+            free(ldt);
+        } else {
+            curr = &(*curr)->next;
+        }
     }
 }
 
@@ -563,6 +633,14 @@ void lorieHandleClipboardData(const char* data) {
 void lorieInitClipboard(void) {
 #define ATOM(name) xa##name = MakeAtom(#name, strlen(#name), TRUE)
     ATOM(TIMESTAMP); ATOM(TEXT); ATOM(CLIPBOARD); ATOM(TARGETS); ATOM(STRING); ATOM(UTF8_STRING);
+    xaPNG = MakeAtom("image/png", 9, TRUE);
+    xaPNG_UPPER = MakeAtom("PNG", 3, TRUE);
+    xaJPEG = MakeAtom("image/jpeg", 10, TRUE);
+    xaIMAGE_JPG = MakeAtom("image/jpg", 9, TRUE);
+    xaJPEG_UPPER = MakeAtom("JPEG", 4, TRUE);
+    xaBMP = MakeAtom("image/bmp", 9, TRUE);
+    xaHTML = MakeAtom("text/html", 9, TRUE);
+    xaHTML_UTF8 = MakeAtom("text/html;charset=utf-8", 23, TRUE);
 
     if (!origProcConvertSelection) {
         origProcConvertSelection = ProcVector[X_ConvertSelection];
