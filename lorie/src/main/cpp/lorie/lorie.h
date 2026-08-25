@@ -24,13 +24,17 @@ extern "C" {
 
 struct lorie_shared_server_state;
 
+#define LORIE_CLIPBOARD_TEXT 0
+#define LORIE_CLIPBOARD_IMAGE_PNG 1
+#define LORIE_CLIPBOARD_HTML 2
+
 void lorieConfigureNotify(int width, int height, int framerate, size_t name_size, char* name);
 void lorieEnableClipboardSync(Bool enable);
-void lorieSendClipboardData(const char* data);
+void lorieSendClipboardData(const char* data, size_t len, uint8_t mimeType);
 void lorieInitClipboard(void);
-void lorieRequestClipboard(void);
+void lorieRequestClipboard(uint8_t targetType);
 void lorieHandleClipboardAnnounce(void);
-void lorieHandleClipboardData(const char* data);
+void lorieHandleClipboardData(uint8_t mimeType, const char* data, size_t len);
 void lorieSetStylusEnabled(Bool enabled);
 void lorieSyncLockKeysState(uint8_t state);
 void lorieWakeServer(void);
@@ -163,6 +167,11 @@ typedef union {
     } clipboardEnable;
     struct {
         uint8_t t;
+        uint8_t targetType;
+    } clipboardRequest;
+    struct {
+        uint8_t t;
+        uint8_t mimeType;
         uint32_t count;
     } clipboardSend;
     struct {
