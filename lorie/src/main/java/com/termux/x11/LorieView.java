@@ -347,11 +347,18 @@ public class LorieView extends SurfaceView implements InputStub {
 
     /** Shows or hides the soft keyboard for this view, the same way focusing an editable field would. */
     public void setKeyboardVisible(boolean visible) {
+        keyboardVisible = visible;
         if (visible) {
             requestFocus();
             mIMM.showSoftInput(this, 0);
-        } else
+            post(() -> {
+                if (keyboardVisible) {
+                    mIMM.showSoftInput(this, 0);
+                }
+            });
+        } else {
             mIMM.hideSoftInputFromWindow(getWindowToken(), 0);
+        }
     }
 
     public void toggleKeyboardVisible() {
@@ -792,10 +799,20 @@ public class LorieView extends SurfaceView implements InputStub {
         if (clipboardSyncEnabled && hasFocus) {
             clipboard.addPrimaryClipChangedListener(clipboardListener);
             checkForClipboardChange();
-        } else
+        } else if (clipboard != null && clipboardListener != null) {
             clipboard.removePrimaryClipChangedListener(clipboardListener);
+        }
 
-        activity.mInputHandler.refreshInputDevices();
+        if (activity != null && activity.mInputHandler != null) {
+            activity.mInputHandler.refreshInputDevices();
+        } else {
+            TouchInputHandler.refreshInputDevices();
+        }
+    }
+
+    @Override
+    public boolean onCheckIsTextEditor() {
+        return true;
     }
 
     @Override
