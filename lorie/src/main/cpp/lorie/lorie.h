@@ -24,17 +24,17 @@ extern "C" {
 
 struct lorie_shared_server_state;
 
-#define LORIE_CLIPBOARD_TEXT 0
-#define LORIE_CLIPBOARD_IMAGE_PNG 1
-#define LORIE_CLIPBOARD_HTML 2
+#define LORIE_CLIPBOARD_NONE 0
+#define LORIE_CLIPBOARD_TEXT 1
+#define LORIE_CLIPBOARD_IMAGE_PNG 2
 
 void lorieConfigureNotify(int width, int height, int framerate, size_t name_size, char* name);
 void lorieEnableClipboardSync(Bool enable);
 void lorieSendClipboardData(const char* data, size_t len, uint8_t mimeType);
 void lorieInitClipboard(void);
-void lorieRequestClipboard(uint8_t targetType);
+void lorieStageClipboard(uint8_t type, const char* data, size_t len);
+void lorieClearStagedClipboard(void);
 void lorieHandleClipboardAnnounce(void);
-void lorieHandleClipboardData(uint8_t mimeType, const char* data, size_t len);
 void lorieSetStylusEnabled(Bool enabled);
 void lorieSyncLockKeysState(uint8_t state);
 void lorieWakeServer(void);

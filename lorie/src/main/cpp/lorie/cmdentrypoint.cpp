@@ -476,7 +476,7 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
                 QueueWorkProc(+[](__unused ClientPtr pClient, void *closure) -> Bool {
                     // This must be done only on X server thread.
                     auto *p = (ClipboardPayload*) closure;
-                    lorieHandleClipboardData(p->mimeType, p->data, p->count);
+                    lorieStageClipboard(p->mimeType, p->data, p->count);
                     free(p);
                     return TRUE;
                 }, nullptr, p);
@@ -544,13 +544,6 @@ void lorieSendClipboardData(const char* data, size_t len, uint8_t mimeType) {
 void lorieSendSyncReply(uint32_t serial) {
     if (conn_fd != -1) {
         lorieEvent e = { .sync = { .t = EVENT_SYNC_REPLY, .serial = serial } };
-        lorie_write_all(conn_fd, &e, sizeof(e));
-    }
-}
-
-void lorieRequestClipboard(uint8_t targetType) {
-    if (conn_fd != -1) {
-        lorieEvent e = { .clipboardRequest = { .t = EVENT_CLIPBOARD_REQUEST, .targetType = targetType } };
         lorie_write_all(conn_fd, &e, sizeof(e));
     }
 }

@@ -257,14 +257,6 @@ int LorieViewResources::xcallback(int fd, int events) {
                         }
                         env->DeleteLocalRef(mime);
                         env->DeleteLocalRef(byteArr);
-                    } else if (e.clipboardSend.mimeType == LORIE_CLIPBOARD_HTML) {
-                        jbyteArray byteArr = env->NewByteArray(e.clipboardSend.count);
-                        env->SetByteArrayRegion(byteArr, 0, e.clipboardSend.count, (const jbyte*) clipboard);
-                        jmethodID id = env->GetMethodID(env->GetObjectClass(thiz), "setClipboardHtml", "([B)V");
-                        if (id) {
-                            env->CallVoidMethod(thiz, id, byteArr);
-                        }
-                        env->DeleteLocalRef(byteArr);
                     } else {
                         log(DEBUG, "Clipboard text content (%u symbols)", e.clipboardSend.count);
                         jmethodID id = env->GetMethodID(env->GetObjectClass(thiz), "setClipboardText", "(Ljava/lang/String;)V");
@@ -277,13 +269,6 @@ int LorieViewResources::xcallback(int fd, int events) {
                         env->CallVoidMethod(thiz, id, str);
                     }
                     free(clipboard);
-                    break;
-                }
-                case EVENT_CLIPBOARD_REQUEST: {
-                    jmethodID id = env->GetMethodID(env->GetObjectClass(thiz), "requestClipboard", "(I)V");
-                    if (id) {
-                        env->CallVoidMethod(thiz, id, (jint) e.clipboardRequest.targetType);
-                    }
                     break;
                 }
                 case EVENT_SHARED_SERVER_STATE: {
