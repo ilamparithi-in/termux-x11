@@ -300,8 +300,14 @@ static Bool handleStylusEvent(__unused ClientPtr pClient, void *closure) {
     uint32_t released, pressed, diff;
     DeviceIntPtr device = e->stylus.mouse ? lorieMouse : (e->stylus.eraser ? lorieEraser : loriePen);
     if (!device) {
-        free(e);
-        return TRUE;
+        if (!e->stylus.mouse) {
+            lorieSetStylusEnabled(TRUE);
+            device = e->stylus.eraser ? lorieEraser : loriePen;
+        }
+        if (!device) {
+            free(e);
+            return TRUE;
+        }
     }
 
     double x = max(min((float) e->stylus.x, (float) pScreenPtr->width), 0.0f);
@@ -314,21 +320,26 @@ static Bool handleStylusEvent(__unused ClientPtr pClient, void *closure) {
         valuator_mask_set_double(&mask, 4, e->stylus.tilt_y);
         valuator_mask_set_double(&mask, 5, e->stylus.orientation);
     }
-    QueuePointerEvents(device, MotionNotify, 0, POINTER_ABSOLUTE | POINTER_DESKTOP | (device == lorieMouse ? POINTER_NORAW : 0), &mask);
-
     diff = buttons_prev ^ e->stylus.buttons;
     released = diff & ~e->stylus.buttons;
     pressed = diff & e->stylus.buttons;
 
-    for (int i=0; i<3; i++) {
-        if (released & 0x1) {
-            QueuePointerEvents(device, ButtonRelease, i + 1, POINTER_RELATIVE, nullptr);
+    if (pressed) {
+        QueuePointerEvents(device, MotionNotify, 0, POINTER_ABSOLUTE | POINTER_DESKTOP | (device == lorieMouse ? POINTER_NORAW : 0), &mask);
+        for (int i = 0; i < 3; i++) {
+            if (pressed & (1 << i)) {
+                QueuePointerEvents(device, ButtonPress, i + 1, POINTER_ABSOLUTE | POINTER_DESKTOP, &mask);
+            }
         }
-        if (pressed & 0x1) {
-            QueuePointerEvents(device, ButtonPress, i + 1, POINTER_RELATIVE, nullptr);
+    } else if (released) {
+        for (int i = 0; i < 3; i++) {
+            if (released & (1 << i)) {
+                QueuePointerEvents(device, ButtonRelease, i + 1, POINTER_ABSOLUTE | POINTER_DESKTOP, &mask);
+            }
         }
-        released >>= 1;
-        pressed >>= 1;
+        QueuePointerEvents(device, MotionNotify, 0, POINTER_ABSOLUTE | POINTER_DESKTOP | (device == lorieMouse ? POINTER_NORAW : 0), &mask);
+    } else {
+        QueuePointerEvents(device, MotionNotify, 0, POINTER_ABSOLUTE | POINTER_DESKTOP | (device == lorieMouse ? POINTER_NORAW : 0), &mask);
     }
     buttons_prev = e->stylus.buttons;
 

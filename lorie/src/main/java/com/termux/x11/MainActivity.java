@@ -8,6 +8,7 @@ import static android.view.WindowManager.LayoutParams.*;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.AppOpsManager;
 import android.app.PictureInPictureParams;
 import android.content.ClipData;
@@ -1107,6 +1108,30 @@ public class MainActivity extends AppCompatActivity {
     public void getRealMetrics(DisplayMetrics m) {
         if (getLorieView() != null && getLorieView().getDisplay() != null)
             getLorieView().getDisplay().getRealMetrics(m);
+    }
+
+    public static void getRealMetrics(Activity activity, DisplayMetrics m) {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).getRealMetrics(m);
+        } else if (activity != null) {
+            View lv = activity.findViewById(R.id.lorieView);
+            if (lv != null && lv.getDisplay() != null) {
+                lv.getDisplay().getRealMetrics(m);
+            } else if (activity.getWindowManager() != null && activity.getWindowManager().getDefaultDisplay() != null) {
+                activity.getWindowManager().getDefaultDisplay().getRealMetrics(m);
+            }
+        }
+    }
+
+    public static void toggleKeyboardVisibility(Activity activity) {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).toggleKeyboardVisibility();
+        } else if (activity != null) {
+            View lv = activity.findViewById(R.id.lorieView);
+            if (lv instanceof LorieView) {
+                ((LorieView) lv).toggleKeyboardVisible();
+            }
+        }
     }
 
     public void setCapturingEnabled(boolean enabled) {
