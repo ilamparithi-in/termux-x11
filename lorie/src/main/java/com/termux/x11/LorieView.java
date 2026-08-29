@@ -308,6 +308,7 @@ public class LorieView extends SurfaceView implements InputStub {
         }
     };
 
+    public LorieView(Context context) { this(context, null); }
     public LorieView(Context context, AttributeSet attrs) { super(context, attrs); }
 
     {
@@ -369,6 +370,10 @@ public class LorieView extends SurfaceView implements InputStub {
             requestFocus();
             mIMM.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
         }
+    }
+
+    public boolean isKeyboardVisible() {
+        return keyboardVisible;
     }
 
     public Prefs getPrefs() {
@@ -626,8 +631,6 @@ public class LorieView extends SurfaceView implements InputStub {
         }
         if (activity != null && activity.mInputHandler != null) {
             activity.mInputHandler.refreshInputDevices();
-        } else {
-            TouchInputHandler.refreshInputDevices();
         }
     }
 
@@ -809,8 +812,6 @@ public class LorieView extends SurfaceView implements InputStub {
 
         if (activity != null && activity.mInputHandler != null) {
             activity.mInputHandler.refreshInputDevices();
-        } else {
-            TouchInputHandler.refreshInputDevices();
         }
     }
 
