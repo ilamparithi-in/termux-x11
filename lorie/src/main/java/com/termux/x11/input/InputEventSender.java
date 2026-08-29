@@ -66,6 +66,10 @@ public final class InputEventSender {
         mPressedKeys = new TreeSet<>();
     }
 
+    public InputEventSender(InputStub injector) {
+        this(null, injector);
+    }
+
     private static final int[][] MODIFIER_KEYS = {
         {META_SHIFT_ON, KEYCODE_SHIFT_LEFT, KEYCODE_SHIFT_RIGHT},
         {META_CTRL_ON, KEYCODE_CTRL_LEFT, KEYCODE_CTRL_RIGHT},
