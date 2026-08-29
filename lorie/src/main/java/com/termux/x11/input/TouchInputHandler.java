@@ -1422,10 +1422,20 @@ public class TouchInputHandler {
                 sendStylusState(state);
 
                 if (action == MotionEvent.ACTION_DOWN && buttons != 0) {
-                    StylusState dotStep = state.copy();
-                    dotStep.x += 0.01f;
-                    dotStep.y += 0.01f;
-                    sendStylusState(dotStep);
+                    StylusState p1 = state.copy();
+                    p1.x += 0.5f;
+                    p1.y += 0.5f;
+                    sendStylusState(p1);
+
+                    StylusState p2 = state.copy();
+                    p2.x += 1.0f;
+                    p2.y += 1.0f;
+                    sendStylusState(p2);
+
+                    StylusState p3 = state.copy();
+                    p3.x = state.x;
+                    p3.y = state.y;
+                    sendStylusState(p3);
                 }
             }
 
